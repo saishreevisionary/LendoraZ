@@ -1,98 +1,119 @@
--- ==========================================
--- LENDORAZ SUPABASE DB SCHEMA (PRODUCTION-READY)
--- ==========================================
+-- ========================================================
+-- LENDORAZ ROLE-BASED ACCESS CONTROL SCHEMA (PRODUCTION-READY)
+-- ========================================================
 
 -- Enable extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Define Custom Roles Enum
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
-    CREATE TYPE user_role AS ENUM (
-      'super_admin',
-      'company_owner',
-      'manager',
-      'collection_agent',
-      'accountant',
-      'customer_portal_user'
-    );
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_level_type') THEN
-    CREATE TYPE risk_level_type AS ENUM (
-      'low',
-      'medium',
-      'high'
-    );
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'loan_status_type') THEN
-    CREATE TYPE loan_status_type AS ENUM (
-      'active',
-      'defaulted',
-      'settled',
-      'closed'
-    );
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'lead_status_type') THEN
-    CREATE TYPE lead_status_type AS ENUM (
-      'new_lead',
-      'contacted',
-      'interested',
-      'approved',
-      'rejected',
-      'converted'
-    );
-  END IF;
-END$$;
-
 -- ==========================================
--- 1. Profiles Table
+-- 1. Core Structures
 -- ==========================================
-CREATE TABLE IF NOT EXISTS profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+
+CREATE TABLE IF NOT EXISTS public.companies (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'inactive')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.users (
+  id UUID PRIMARY KEY, -- Matches auth.users.id
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE, -- Nullable for Super Admins
   email TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
   phone TEXT,
-  role user_role NOT NULL DEFAULT 'collection_agent',
   avatar_url TEXT,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'inactive')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'inactive')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Enable RLS
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- ==========================================
+-- 2. RBAC Tables
+-- ==========================================
+
+CREATE TABLE IF NOT EXISTS public.roles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code TEXT UNIQUE NOT NULL, -- 'super_admin', 'company_owner', 'manager', 'collection_agent', 'accountant', 'customer'
+  name TEXT NOT NULL,
+  description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS public.permissions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code TEXT UNIQUE NOT NULL, -- e.g. 'smart_collection_dashboard', 'ai_risk_prediction', etc.
+  name TEXT NOT NULL,
+  description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS public.role_permissions (
+  role_id UUID REFERENCES public.roles(id) ON DELETE CASCADE,
+  permission_id UUID REFERENCES public.permissions(id) ON DELETE CASCADE,
+  PRIMARY KEY (role_id, permission_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.user_roles (
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  role_id UUID REFERENCES public.roles(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, role_id)
+);
 
 -- ==========================================
--- 2. Customers Table
+-- 3. Company Sub-Entities (People)
 -- ==========================================
-CREATE TABLE IF NOT EXISTS customers (
+
+CREATE TABLE IF NOT EXISTS public.customers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  user_id UUID REFERENCES public.users(id) ON DELETE SET NULL, -- Nullable if not registered online yet
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
   full_name TEXT NOT NULL,
-  phone TEXT NOT NULL UNIQUE,
+  phone TEXT NOT NULL,
   email TEXT,
-  pan_number TEXT UNIQUE,
-  aadhaar_number TEXT UNIQUE,
+  pan_number TEXT,
+  aadhaar_number TEXT,
   credit_score INT DEFAULT 650,
-  risk_level risk_level_type NOT NULL DEFAULT 'low',
+  risk_level TEXT NOT NULL DEFAULT 'low' CHECK (risk_level IN ('low', 'medium', 'high')),
   address TEXT,
   geo_location JSONB, -- { "lat": double, "lng": double }
+  assigned_agent_id UUID REFERENCES public.users(id) ON DELETE SET NULL, -- Maps to a Collection Agent user
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  UNIQUE(company_id, phone)
 );
 
-ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS public.agents (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  phone TEXT,
+  zone TEXT,
+  status TEXT DEFAULT 'active'
+);
+
+CREATE TABLE IF NOT EXISTS public.managers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  department TEXT
+);
+
+CREATE TABLE IF NOT EXISTS public.accountants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  employee_code TEXT
+);
 
 -- ==========================================
--- 3. Loans Table
+-- 4. Financial Domain
 -- ==========================================
-CREATE TABLE IF NOT EXISTS loans (
+
+CREATE TABLE IF NOT EXISTS public.loans (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE NOT NULL,
+  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE NOT NULL,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
   principal_amount NUMERIC(15, 2) NOT NULL,
   interest_rate_annual NUMERIC(5, 2) NOT NULL,
   term_months INT NOT NULL,
@@ -101,22 +122,18 @@ CREATE TABLE IF NOT EXISTS loans (
   paid_balance NUMERIC(15, 2) DEFAULT 0.00,
   start_date DATE NOT NULL,
   due_date DATE NOT NULL,
-  status loan_status_type NOT NULL DEFAULT 'active',
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'defaulted', 'settled', 'closed')),
   collateral_type TEXT,
   collateral_details JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  missed_dues INT DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE loans ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 4. Collections Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS collections (
+CREATE TABLE IF NOT EXISTS public.collections (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  loan_id UUID REFERENCES loans(id) ON DELETE CASCADE NOT NULL,
-  agent_id UUID REFERENCES profiles(id) ON DELETE SET NULL NOT NULL,
+  loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE NOT NULL,
+  agent_id UUID REFERENCES public.users(id) ON DELETE SET NULL NOT NULL, -- Agent User who collected
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
   amount NUMERIC(15, 2) NOT NULL,
   collection_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'upi', 'bank_transfer', 'cheque')),
@@ -125,19 +142,48 @@ CREATE TABLE IF NOT EXISTS collections (
   notes TEXT,
   voice_note_url TEXT,
   geo_location JSONB, -- { "lat": double, "lng": double }
-  offline_id TEXT UNIQUE, -- For offline-first deduplication
-  synced_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE collections ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS public.payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  collection_id UUID REFERENCES public.collections(id) ON DELETE SET NULL, -- Linked collection if agent-led
+  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE NOT NULL,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+  amount NUMERIC(15, 2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'success' CHECK (status IN ('success', 'pending', 'failed')),
+  payment_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.receipts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  payment_id UUID REFERENCES public.payments(id) ON DELETE CASCADE NOT NULL,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+  receipt_number TEXT UNIQUE NOT NULL,
+  amount NUMERIC(15, 2) NOT NULL,
+  file_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ==========================================
--- 5. Gold Loans Table
+-- 5. Modules & Utilities
 -- ==========================================
-CREATE TABLE IF NOT EXISTS gold_loans (
+
+CREATE TABLE IF NOT EXISTS public.documents (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  loan_id UUID REFERENCES loans(id) ON DELETE CASCADE NOT NULL,
+  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE NOT NULL,
+  loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  document_type TEXT NOT NULL CHECK (document_type IN ('aadhaar', 'pan', 'photo', 'promissory_note', 'agreement')),
+  file_url TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.gold_loans (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE NOT NULL,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
   weight_grams NUMERIC(8, 3) NOT NULL,
   purity_karats INT NOT NULL CHECK (purity_karats BETWEEN 18 AND 24),
   valuation_amount NUMERIC(15, 2) NOT NULL,
@@ -146,13 +192,9 @@ CREATE TABLE IF NOT EXISTS gold_loans (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE gold_loans ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 6. Chit Funds Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS chit_funds (
+CREATE TABLE IF NOT EXISTS public.chit_groups (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
   group_name TEXT NOT NULL UNIQUE,
   total_value NUMERIC(15, 2) NOT NULL,
   max_members INT NOT NULL,
@@ -162,275 +204,311 @@ CREATE TABLE IF NOT EXISTS chit_funds (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE chit_funds ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 7. Chit Members Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS chit_members (
+CREATE TABLE IF NOT EXISTS public.crm_leads (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  chit_fund_id UUID REFERENCES chit_funds(id) ON DELETE CASCADE NOT NULL,
-  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'defaulted')),
-  joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (chit_fund_id, profile_id)
-);
-
-ALTER TABLE chit_members ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 8. Chit Auctions Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS chit_auctions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  chit_fund_id UUID REFERENCES chit_funds(id) ON DELETE CASCADE NOT NULL,
-  month_number INT NOT NULL,
-  auction_date TIMESTAMP WITH TIME ZONE NOT NULL,
-  winner_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  bid_amount NUMERIC(15, 2) NOT NULL,
-  dividend_per_member NUMERIC(15, 2) NOT NULL,
-  paid_out_status BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE chit_auctions ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 9. Guarantors Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS guarantors (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  loan_id UUID REFERENCES loans(id) ON DELETE CASCADE NOT NULL,
-  full_name TEXT NOT NULL,
-  phone TEXT NOT NULL,
-  relationship TEXT NOT NULL,
-  address TEXT,
-  email TEXT,
-  document_url TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE guarantors ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 10. CRM Leads Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS crm_leads (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
   full_name TEXT NOT NULL,
   phone TEXT NOT NULL,
   email TEXT,
   requested_amount NUMERIC(15, 2),
-  status lead_status_type NOT NULL DEFAULT 'new_lead',
-  assigned_to UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'new_lead' CHECK (status IN ('new_lead', 'contacted', 'interested', 'approved', 'rejected', 'converted')),
+  assigned_to UUID REFERENCES public.users(id) ON DELETE SET NULL, -- Lead assigned to agent/user
   notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT DEFAULT 'unread' CHECK (status IN ('unread', 'read')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE NOT NULL,
+  actor_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  target_id TEXT,
+  details JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.system_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  description TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE crm_leads ENABLE ROW LEVEL SECURITY;
-
 -- ==========================================
--- 11. Reminders Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS reminders (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  loan_id UUID REFERENCES loans(id) ON DELETE CASCADE NOT NULL,
-  template_type TEXT NOT NULL CHECK (template_type IN ('upcoming_due', 'overdue_notice', 'payment_received', 'final_reminder')),
-  channel TEXT NOT NULL CHECK (channel IN ('sms', 'whatsapp', 'email')),
-  scheduled_for TIMESTAMP WITH TIME ZONE NOT NULL,
-  sent_at TIMESTAMP WITH TIME ZONE,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 12. Agent Activity & Targets Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS agent_targets (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  agent_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  target_month DATE NOT NULL,
-  target_amount NUMERIC(15, 2) NOT NULL,
-  achieved_amount NUMERIC(15, 2) DEFAULT 0.00,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE agent_targets ENABLE ROW LEVEL SECURITY;
-
-CREATE TABLE IF NOT EXISTS agent_attendance (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  agent_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  attendance_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  check_in_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  check_out_time TIMESTAMP WITH TIME ZONE,
-  last_location JSONB, -- { "lat": double, "lng": double }
-  status TEXT DEFAULT 'present' CHECK (status IN ('present', 'absent', 'on_leave')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(agent_id, attendance_date)
-);
-
-ALTER TABLE agent_attendance ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 13. Emergency Alerts Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS emergency_alerts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE NOT NULL,
-  loan_id UUID REFERENCES loans(id) ON DELETE CASCADE NOT NULL,
-  missed_dues_count INT NOT NULL,
-  triggered_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  resolved_at TIMESTAMP WITH TIME ZONE,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'resolved')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE emergency_alerts ENABLE ROW LEVEL SECURITY;
-
--- ==========================================
--- 14. Document Vault Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS documents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  loan_id UUID REFERENCES loans(id) ON DELETE CASCADE,
-  customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  document_type TEXT NOT NULL CHECK (document_type IN ('aadhaar', 'pan', 'photo', 'promissory_note', 'agreement')),
-  file_url TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
-
-
--- ==========================================
--- ROW LEVEL SECURITY (RLS) POLICIES
+-- 6. Helper Functions for RLS
 -- ==========================================
 
--- 1. Profiles Table Policies
-DROP POLICY IF EXISTS "Public profiles are viewable by authenticated users." ON profiles;
-CREATE POLICY "Public profiles are viewable by authenticated users." ON profiles
-  FOR SELECT USING (auth.role() = 'authenticated');
+CREATE OR REPLACE FUNCTION public.get_user_company_id()
+RETURNS UUID AS $$
+BEGIN
+  RETURN (SELECT company_id FROM public.users WHERE id = auth.uid());
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-DROP POLICY IF EXISTS "Users can update their own profiles." ON profiles;
-CREATE POLICY "Users can update their own profiles." ON profiles
-  FOR UPDATE USING (auth.uid() = id);
+CREATE OR REPLACE FUNCTION public.get_user_role()
+RETURNS TEXT AS $$
+BEGIN
+  RETURN (
+    SELECT r.code 
+    FROM public.user_roles ur 
+    JOIN public.roles r ON ur.role_id = r.id 
+    WHERE ur.user_id = auth.uid()
+    LIMIT 1
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- 2. Loans Table Policies
-DROP POLICY IF EXISTS "Super admin and Company Owner have full access to loans." ON loans;
-CREATE POLICY "Super admin and Company Owner have full access to loans." ON loans
+CREATE OR REPLACE FUNCTION public.has_permission(perm_code TEXT)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 
+    FROM public.user_roles ur
+    JOIN public.role_permissions rp ON ur.role_id = rp.role_id
+    JOIN public.permissions p ON rp.permission_id = p.id
+    WHERE ur.user_id = auth.uid() AND p.code = perm_code
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ==========================================
+-- 7. Row Level Security Policies
+-- ==========================================
+
+-- Enable RLS on all tables
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.managers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accountants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.collections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gold_loans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chit_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.crm_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
+
+-- Dynamic Policies
+
+-- Super Admin Bypass helper (returns true if current user is super_admin)
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN (public.get_user_role() = 'super_admin');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+
+-- 1. COMPANIES
+CREATE POLICY "Super Admins manage all companies" ON public.companies
+  FOR ALL USING (public.is_super_admin());
+
+CREATE POLICY "Users view own company" ON public.companies
+  FOR SELECT USING (id = public.get_user_company_id());
+
+
+-- 2. USERS
+CREATE POLICY "Super Admins manage all users" ON public.users
+  FOR ALL USING (public.is_super_admin());
+
+CREATE POLICY "Users view company-wide users" ON public.users
+  FOR SELECT USING (company_id = public.get_user_company_id());
+
+CREATE POLICY "Users update own profile" ON public.users
+  FOR UPDATE USING (id = auth.uid());
+
+
+-- 3. RBAC METADATA
+CREATE POLICY "Read permissions allowed for all" ON public.permissions FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Read roles allowed for all" ON public.roles FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Read role_permissions allowed for all" ON public.role_permissions FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Read user_roles allowed for all" ON public.user_roles FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Super admin manages roles and permissions" ON public.roles FOR ALL USING (public.is_super_admin());
+CREATE POLICY "Super admin manages permissions config" ON public.permissions FOR ALL USING (public.is_super_admin());
+CREATE POLICY "Super admin maps role permissions" ON public.role_permissions FOR ALL USING (public.is_super_admin());
+CREATE POLICY "Company Owner / Super Admin manage user roles" ON public.user_roles
+  FOR ALL USING (public.is_super_admin() OR public.get_user_role() = 'company_owner');
+
+
+-- 4. CUSTOMERS
+CREATE POLICY "Customers view self" ON public.customers
+  FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Agents view assigned customers" ON public.customers
+  FOR SELECT USING (company_id = public.get_user_company_id() AND (assigned_agent_id = auth.uid() OR public.get_user_role() IN ('company_owner', 'manager', 'accountant')));
+
+CREATE POLICY "Staff manages customers" ON public.customers
   FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM profiles 
-      WHERE profiles.id = auth.uid() 
-      AND profiles.role IN ('super_admin', 'company_owner')
-    )
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager'))
   );
 
-DROP POLICY IF EXISTS "Managers and Accountants can view all loans." ON loans;
-CREATE POLICY "Managers and Accountants can view all loans." ON loans
+
+-- 5. LOANS
+CREATE POLICY "Customers view own loans" ON public.loans
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM profiles 
-      WHERE profiles.id = auth.uid() 
-      AND profiles.role IN ('manager', 'accountant')
-    )
+    customer_id IN (SELECT id FROM public.customers WHERE user_id = auth.uid())
   );
 
-DROP POLICY IF EXISTS "Agents can view loans assigned to their clients." ON loans;
-CREATE POLICY "Agents can view loans assigned to their clients." ON loans
+CREATE POLICY "Agents view assigned loans" ON public.loans
   FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM profiles 
-      WHERE profiles.id = auth.uid() 
-      AND profiles.role = 'collection_agent'
-    )
+    company_id = public.get_user_company_id() AND 
+    (customer_id IN (SELECT id FROM public.customers WHERE assigned_agent_id = auth.uid()) 
+     OR public.get_user_role() IN ('company_owner', 'manager', 'accountant'))
   );
 
-DROP POLICY IF EXISTS "Customers can view their own loans." ON loans;
-CREATE POLICY "Customers can view their own loans." ON loans
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM customers 
-      WHERE customers.id = loans.customer_id 
-      AND customers.profile_id = auth.uid()
-    )
-  );
-
--- 3. Collections Table Policies
-DROP POLICY IF EXISTS "Agents can insert collections." ON collections;
-CREATE POLICY "Agents can insert collections." ON collections
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM profiles 
-      WHERE profiles.id = auth.uid() 
-      AND profiles.role = 'collection_agent'
-    )
-  );
-
-DROP POLICY IF EXISTS "Managers and Owners can view and modify all collections." ON collections;
-CREATE POLICY "Managers and Owners can view and modify all collections." ON collections
+CREATE POLICY "Owners and managers manage loans" ON public.loans
   FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM profiles 
-      WHERE profiles.id = auth.uid() 
-      AND profiles.role IN ('super_admin', 'company_owner', 'manager')
-    )
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager'))
   );
 
--- 4. Emergency Alerts Table Policies
-DROP POLICY IF EXISTS "Managers and Admins see active emergency alerts." ON emergency_alerts;
-CREATE POLICY "Managers and Admins see active emergency alerts." ON emergency_alerts
+
+-- 6. COLLECTIONS
+CREATE POLICY "Agents insert and view own collections" ON public.collections
   FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM profiles 
-      WHERE profiles.id = auth.uid() 
-      AND profiles.role IN ('super_admin', 'company_owner', 'manager')
-    )
+    company_id = public.get_user_company_id() AND 
+    (agent_id = auth.uid() OR public.get_user_role() IN ('company_owner', 'manager', 'accountant'))
   );
 
--- Additional Profiles Insert Policy
-DROP POLICY IF EXISTS "Allow public inserts on profiles during sign up." ON profiles;
-CREATE POLICY "Allow public inserts on profiles during sign up." ON profiles
+CREATE POLICY "Super Admin manage collections" ON public.collections FOR ALL USING (public.is_super_admin());
+
+
+-- 7. PAYMENTS & RECEIPTS
+CREATE POLICY "Customers view own payments" ON public.payments
+  FOR SELECT USING (customer_id IN (SELECT id FROM public.customers WHERE user_id = auth.uid()));
+
+CREATE POLICY "Staff view company payments" ON public.payments
+  FOR ALL USING (
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
+  );
+
+CREATE POLICY "Customers view own receipts" ON public.receipts
+  FOR SELECT USING (payment_id IN (SELECT id FROM public.payments WHERE customer_id IN (SELECT id FROM public.customers WHERE user_id = auth.uid())));
+
+CREATE POLICY "Staff view company receipts" ON public.receipts
+  FOR ALL USING (
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
+  );
+
+
+-- 8. DOCUMENTS, GOLD LOANS, CHIT GROUPS, CRM LEADS, NOTIFICATIONS, AUDIT LOGS
+CREATE POLICY "Documents policy" ON public.documents
+  FOR ALL USING (
+    public.is_super_admin() OR
+    (company_id = public.get_user_company_id() AND (
+      public.get_user_role() IN ('company_owner', 'manager') OR
+      (public.get_user_role() = 'collection_agent' AND customer_id IN (SELECT id FROM public.customers WHERE assigned_agent_id = auth.uid())) OR
+      (public.get_user_role() = 'customer' AND customer_id IN (SELECT id FROM public.customers WHERE user_id = auth.uid()))
+    ))
+  );
+
+CREATE POLICY "Gold Loans policy" ON public.gold_loans
+  FOR ALL USING (
+    public.is_super_admin() OR
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
+  );
+
+CREATE POLICY "Chit Groups policy" ON public.chit_groups
+  FOR ALL USING (
+    public.is_super_admin() OR
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
+  );
+
+CREATE POLICY "CRM Leads policy" ON public.crm_leads
+  FOR ALL USING (
+    public.is_super_admin() OR
+    (company_id = public.get_user_company_id() AND (
+      public.get_user_role() IN ('company_owner', 'manager') OR
+      (public.get_user_role() = 'collection_agent') -- Allowed full access for leads
+    ))
+  );
+
+CREATE POLICY "Notifications owner policy" ON public.notifications
+  FOR ALL USING (user_id = auth.uid());
+
+CREATE POLICY "Audit Logs policy" ON public.audit_logs
+  FOR SELECT USING (
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() = 'company_owner')
+  );
+
+CREATE POLICY "Super Admins manage system settings" ON public.system_settings
+  FOR ALL USING (public.is_super_admin());
+
+CREATE POLICY "All authenticated users view system settings" ON public.system_settings
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Allow public profiles inserts during signup" ON public.users
   FOR INSERT WITH CHECK (true);
 
--- 5. Automatic User Profile Trigger
--- Creates a profile in the public profiles table automatically when a new user registers in auth.users
+-- ==========================================
+-- 8. Automatically Map Profiles Trigger
+-- ==========================================
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
-  default_role public.user_role;
-  meta_role text;
+  default_role_id UUID;
+  default_role_code TEXT;
+  target_company_id UUID;
 BEGIN
-  -- Extract role from metadata, default to collection_agent if missing
-  meta_role := COALESCE(new.raw_user_meta_data->>'role', 'collection_agent');
+  -- Determine role from user metadata
+  default_role_code := COALESCE(new.raw_user_meta_data->>'role', 'collection_agent');
+  SELECT id INTO default_role_id FROM public.roles WHERE code = default_role_code;
   
-  -- Map string to enum type user_role
-  CASE meta_role
-    WHEN 'super_admin' THEN default_role := 'super_admin'::public.user_role;
-    WHEN 'company_owner' THEN default_role := 'company_owner'::public.user_role;
-    WHEN 'manager' THEN default_role := 'manager'::public.user_role;
-    WHEN 'collection_agent' THEN default_role := 'collection_agent'::public.user_role;
-    WHEN 'accountant' THEN default_role := 'accountant'::public.user_role;
-    WHEN 'customer_portal_user' THEN default_role := 'customer_portal_user'::public.user_role;
-    ELSE default_role := 'collection_agent'::public.user_role;
-  END CASE;
+  -- If role doesn't exist in roles metadata, default to collection_agent role
+  IF default_role_id IS NULL THEN
+    SELECT id INTO default_role_id FROM public.roles WHERE code = 'collection_agent';
+  END IF;
 
-  INSERT INTO public.profiles (id, email, full_name, role, status)
+  -- Read company_id from user metadata if provided, otherwise assign to first company
+  IF new.raw_user_meta_data->>'company_id' IS NOT NULL THEN
+    target_company_id := (new.raw_user_meta_data->>'company_id')::UUID;
+  ELSE
+    SELECT id INTO target_company_id FROM public.companies LIMIT 1;
+  END IF;
+
+  INSERT INTO public.users (id, company_id, email, full_name, status)
   VALUES (
     new.id,
+    CASE WHEN default_role_code = 'super_admin' THEN NULL ELSE target_company_id END,
     new.email,
     COALESCE(new.raw_user_meta_data->>'full_name', new.email),
-    default_role,
     'active'
   )
   ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,
-    full_name = EXCLUDED.full_name,
-    role = EXCLUDED.role;
+    full_name = EXCLUDED.full_name;
+
+  INSERT INTO public.user_roles (user_id, role_id)
+  VALUES (new.id, default_role_id)
+  ON CONFLICT (user_id, role_id) DO NOTHING;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
@@ -442,61 +520,42 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ==========================================
--- 15. System Settings Table
+-- 9. Privileges and Access Control
 -- ==========================================
-CREATE TABLE IF NOT EXISTS system_settings (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  key TEXT UNIQUE NOT NULL,
-  value TEXT NOT NULL,
-  description TEXT,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
 
-ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
+-- Grant schema usage to standard database API roles
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
-DROP POLICY IF EXISTS "Super admin full access to settings" ON system_settings;
-CREATE POLICY "Super admin full access to settings" ON system_settings
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM profiles 
-      WHERE profiles.id = auth.uid() 
-      AND profiles.role = 'super_admin'
-    )
-  );
+-- Set default privileges for any future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO service_role;
 
--- Seed System Settings
-INSERT INTO system_settings (key, value, description)
-VALUES 
-  ('interest_rate_default', '12.0', 'Default annual interest rate for new loans'),
-  ('penalty_rate_monthly', '2.0', 'Default monthly penalty rate for overdue loans'),
-  ('sync_interval_seconds', '60', 'Default sync polling interval for offline cache queue')
-ON CONFLICT (key) DO NOTHING;
+-- Explicit table-level privileges for authenticated users under RLS guard
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.companies TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.users TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.roles TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.permissions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.role_permissions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_roles TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customers TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.agents TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.managers TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.accountants TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.loans TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.collections TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.payments TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.receipts TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.documents TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.gold_loans TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.chit_groups TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.crm_leads TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.audit_logs TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.system_settings TO authenticated;
 
--- ==========================================
--- 16. Audit Logs Table
--- ==========================================
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  actor_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  action TEXT NOT NULL,
-  target_id TEXT,
-  details JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Allow authenticated users to insert logs" ON audit_logs;
-CREATE POLICY "Allow authenticated users to insert logs" ON audit_logs
-  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
-DROP POLICY IF EXISTS "Only super admins can view logs" ON audit_logs;
-CREATE POLICY "Only super admins can view logs" ON audit_logs
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM profiles 
-      WHERE profiles.id = auth.uid() 
-      AND profiles.role = 'super_admin'
-    )
-  );
-
+-- Grant selective read-only table access to anonymous users (non-logged-in sessions)
+GRANT SELECT ON public.permissions TO anon;
+GRANT SELECT ON public.roles TO anon;
+GRANT SELECT ON public.role_permissions TO anon;
+GRANT SELECT ON public.user_roles TO anon;
+GRANT SELECT ON public.users TO anon;

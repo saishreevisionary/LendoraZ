@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/network/providers.dart';
+
+// Import features
 import '../collection/collection_dashboard_widget.dart';
 import '../agent/route_planner_widget.dart';
-import '../chit_fund/chit_fund_widget.dart';
-import '../gold_loan/gold_loan_widget.dart';
 import '../crm/crm_leads_widget.dart';
 import '../self_service/customer_portal_widget.dart';
 import '../reports/reports_widget.dart';
 import '../auth/login_screen.dart';
 import '../admin/admin_console_widget.dart';
+import '../admin/system_settings_widget.dart';
+
+// Import role dashboards
+import 'role_dashboards/super_admin_dashboard.dart';
+import 'role_dashboards/owner_dashboard.dart';
+import 'role_dashboards/manager_dashboard.dart';
+import 'role_dashboards/agent_dashboard.dart';
+import 'role_dashboards/accountant_dashboard.dart';
+import 'role_dashboards/customer_dashboard.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -24,7 +31,6 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _selectedBottomNavIndex = 0;
-  final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 
   // Quick action states
   final _voiceInputTextController = TextEditingController();
@@ -33,15 +39,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final service = ref.watch(supabaseServiceProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Build role-based menus and bodies
     return Scaffold(
       appBar: _buildPremiumAppBar(context, service),
       drawer: _buildRoleDrawer(context, service),
       body: _buildSelectedTabBody(service),
       bottomNavigationBar: _buildBottomNavigationBar(context, service),
-      floatingActionButton: _selectedBottomNavIndex == 0 ? _buildQuickActionsFab(context, service) : null,
+      floatingActionButton: _shouldShowQuickActionsFab(service) 
+          ? _buildQuickActionsFab(context, service) 
+          : null,
     );
   }
 
@@ -73,7 +79,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         // Offline / Online / Demo Mode Switcher with Indicator
         Tooltip(
           message: service.isDemoMode 
-              ? 'Demo Mode (Supabase disconnected: ${service.initError ?? "check database connection"})' 
+              ? 'Demo Mode (Supabase disconnected)' 
               : (service.isOffline ? 'Offline Mode (Local Sync Queue Active)' : 'Online Mode (Connected to Supabase)'),
           child: Row(
             children: [
@@ -114,7 +120,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 Switch(
                   value: !service.isOffline,
                   onChanged: (_) => service.toggleNetworkMode(),
-                  activeColor: AppTheme.neonGreen,
+                  activeThumbColor: AppTheme.neonGreen,
                   inactiveThumbColor: AppTheme.warningOrange,
                   inactiveTrackColor: AppTheme.warningOrange.withValues(alpha: 0.2),
                 ),
@@ -133,12 +139,39 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
             onPressed: () => service.syncOfflineQueue(),
           ),
+        // Theme Switcher Button
+        IconButton(
+          tooltip: 'Toggle Theme Mode',
+          icon: Icon(
+            service.themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
+            color: Colors.grey,
+            size: 20,
+          ),
+          onPressed: () => service.toggleThemeMode(),
+        ),
+        // Logout Button
+        IconButton(
+          tooltip: 'Log Out',
+          icon: const Icon(Icons.logout, color: Colors.grey, size: 20),
+          onPressed: () async {
+            await service.signOut();
+            if (context.mounted) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+              );
+            }
+          },
+        ),
         const SizedBox(width: 8),
       ],
     );
   }
 
   Widget _buildRoleDrawer(BuildContext context, SupabaseService service) {
+    // Determine if user has switch role permissions (Super Admin original logins or Demo mode)
+    final bool canSwitchRoles = service.isDemoMode || service.currentUserEmail == 'admin@lendoraz.com';
+
     return Drawer(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       child: Column(
@@ -155,18 +188,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
               child: Text(
-                service.currentUserName.substring(0, 2).toUpperCase(),
+                service.currentUserName.isNotEmpty ? service.currentUserName.substring(0, 2).toUpperCase() : 'US',
                 style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
               ),
             ),
           ),
-          if (service.currentRole == AppUserRole.superAdmin) ...[
+          if (canSwitchRoles) ...[
             const Padding(
               padding: EdgeInsets.all(16.0),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'SWITCH SYSTEM ROLE (ADMIN ONLY)',
+                  'SWITCH SYSTEM ROLE (TESTING ONLY)',
                   style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12),
                 ),
               ),
@@ -191,7 +224,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     onTap: () {
                       service.switchRole(role);
                       Navigator.pop(context);
-                      setState(() {});
+                      setState(() => _selectedBottomNavIndex = 0);
                     },
                   );
                 }).toList(),
@@ -220,7 +253,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               if (context.mounted) {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()),
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
                 );
               }
             },
@@ -232,62 +265,109 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   List<NavigationDestination> _getDestinations(SupabaseService service) {
-    final list = [
-      const NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Metrics'),
-      const NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Collections'),
-      const NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Routes'),
-      const NavigationDestination(icon: Icon(Icons.people_alt_outlined), selectedIcon: Icon(Icons.people_alt), label: 'Leads CRM'),
-      const NavigationDestination(icon: Icon(Icons.analytics_outlined), selectedIcon: Icon(Icons.analytics), label: 'Reports'),
-    ];
-
-    if (service.currentRole == AppUserRole.superAdmin) {
-      list.add(const NavigationDestination(
-        icon: Icon(Icons.admin_panel_settings_outlined), 
-        selectedIcon: Icon(Icons.admin_panel_settings), 
-        label: 'Admin',
-      ));
+    switch (service.currentRole) {
+      case AppUserRole.superAdmin:
+        return const [
+          NavigationDestination(icon: Icon(Icons.admin_panel_settings_outlined), selectedIcon: Icon(Icons.admin_panel_settings), label: 'Admin'),
+          NavigationDestination(icon: Icon(Icons.business_outlined), selectedIcon: Icon(Icons.business), label: 'Companies'),
+          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
+        ];
+      case AppUserRole.companyOwner:
+      case AppUserRole.manager:
+        return const [
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.people_alt_outlined), selectedIcon: Icon(Icons.people_alt), label: 'CRM Leads'),
+          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Collections'),
+          NavigationDestination(icon: Icon(Icons.analytics_outlined), selectedIcon: Icon(Icons.analytics), label: 'Reports'),
+        ];
+      case AppUserRole.collectionAgent:
+        return const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Route'),
+          NavigationDestination(icon: Icon(Icons.payment_outlined), selectedIcon: Icon(Icons.payment), label: 'Collect'),
+          NavigationDestination(icon: Icon(Icons.notifications_outlined), selectedIcon: Icon(Icons.notifications), label: 'Alerts'),
+        ];
+      case AppUserRole.accountant:
+        return const [
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Dashboard'),
+          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Payments'),
+          NavigationDestination(icon: Icon(Icons.receipt_outlined), selectedIcon: Icon(Icons.receipt), label: 'Receipts'),
+          NavigationDestination(icon: Icon(Icons.analytics_outlined), selectedIcon: Icon(Icons.analytics), label: 'Reports'),
+        ];
+      case AppUserRole.customer:
+        return const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: 'History'),
+          NavigationDestination(icon: Icon(Icons.receipt_outlined), selectedIcon: Icon(Icons.receipt), label: 'Receipts'),
+        ];
     }
-    return list;
   }
 
   Widget _buildSelectedTabBody(SupabaseService service) {
-    // Tab switching routing based on role permissions
-    if (service.currentRole == AppUserRole.customerPortalUser) {
-      return const CustomerPortalWidget();
-    }
-
     final destinations = _getDestinations(service);
     final index = _selectedBottomNavIndex.clamp(0, destinations.length - 1);
 
-    switch (index) {
-      case 0:
-        return _buildMainKPIsAndCharts(service);
-      case 1:
-        return const CollectionDashboardWidget();
-      case 2:
-        return const RoutePlannerWidget();
-      case 3:
-        return const CRMLeadsWidget();
-      case 4:
-        return const ReportsWidget();
-      case 5:
-        if (service.currentRole == AppUserRole.superAdmin) {
-          return const AdminConsoleWidget();
+    switch (service.currentRole) {
+      case AppUserRole.superAdmin:
+        switch (index) {
+          case 0: return const SuperAdminDashboard();
+          case 1: return const AdminConsoleWidget();
+          case 2: return const SystemSettingsWidget();
+          default: return const SuperAdminDashboard();
         }
-        return _buildMainKPIsAndCharts(service);
-      default:
-        return _buildMainKPIsAndCharts(service);
+      case AppUserRole.companyOwner:
+        switch (index) {
+          case 0: return const CompanyOwnerDashboard();
+          case 1: return const CRMLeadsWidget();
+          case 2: return const CollectionDashboardWidget();
+          case 3: return const ReportsWidget();
+          default: return const CompanyOwnerDashboard();
+        }
+      case AppUserRole.manager:
+        switch (index) {
+          case 0: return const ManagerDashboard();
+          case 1: return const CRMLeadsWidget();
+          case 2: return const CollectionDashboardWidget();
+          case 3: return const ReportsWidget();
+          default: return const ManagerDashboard();
+        }
+      case AppUserRole.collectionAgent:
+        switch (index) {
+          case 0: 
+            return CollectionAgentDashboard(
+              onStartRoute: () => setState(() => _selectedBottomNavIndex = 1),
+              onQuickCollect: () => setState(() => _selectedBottomNavIndex = 2),
+            );
+          case 1: return const RoutePlannerWidget();
+          case 2: return const CollectionDashboardWidget();
+          case 3: return _buildNotificationFeed(service);
+          default: 
+            return CollectionAgentDashboard(
+              onStartRoute: () => setState(() => _selectedBottomNavIndex = 1),
+              onQuickCollect: () => setState(() => _selectedBottomNavIndex = 2),
+            );
+        }
+      case AppUserRole.accountant:
+        switch (index) {
+          case 0: return const AccountantDashboard();
+          case 1: return const CollectionDashboardWidget();
+          case 2: return const Center(child: Text('Receipts Manager Panel', style: TextStyle(color: Colors.white)));
+          case 3: return const ReportsWidget();
+          default: return const AccountantDashboard();
+        }
+      case AppUserRole.customer:
+        switch (index) {
+          case 0: return const CustomerDashboard();
+          case 1: return const CustomerPortalWidget();
+          case 2: return const Center(child: Text('Download Receipts Panel', style: TextStyle(color: Colors.white)));
+          default: return const CustomerDashboard();
+        }
     }
   }
 
   Widget _buildBottomNavigationBar(BuildContext context, SupabaseService service) {
-    if (service.currentRole == AppUserRole.customerPortalUser) {
-      return const SizedBox.shrink(); // Customer portal has a clean direct workspace
-    }
-
     final destinations = _getDestinations(service);
     if (_selectedBottomNavIndex >= destinations.length) {
-      // Safely default back if role changed out of bounds
       WidgetsBinding.instance.addPostFrameCallback((_) {
         setState(() => _selectedBottomNavIndex = 0);
       });
@@ -300,377 +380,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // ==========================================
-  // CORE DASHBOARD CONTENT (KPIs & Analytics)
-  // ==========================================
-  Widget _buildMainKPIsAndCharts(SupabaseService service) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // Calculate aggregate metrics
-    final customers = service.getCustomers();
-    final loans = service.getLoans();
-    final collections = service.getCollections();
+  Widget _buildNotificationFeed(SupabaseService service) {
     final alerts = service.getAlerts().where((a) => a['status'] == 'active').toList();
-
-    double totalPortfolio = 0.0;
-    double expectedCollections = 0.0;
-    double todayCollected = 0.0;
-    for (var l in loans) {
-      totalPortfolio += (l['principal_amount'] as double);
-      expectedCollections += (l['monthly_installment'] as double);
-    }
-    for (var c in collections) {
-      final dateStr = c['collection_date'].toString();
-      if (dateStr.startsWith(DateTime.now().toIso8601String().substring(0, 10))) {
-        todayCollected += (c['amount'] as double);
-      }
-    }
-
-    double efficiency = expectedCollections > 0 ? (todayCollected / expectedCollections) * 100 : 85.0;
-    if (efficiency == 0) efficiency = 92.4; // Sample mock standard
-
-    final forecast = service.getCashflowForecast();
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        await Future.delayed(const Duration(seconds: 1));
-        setState(() {});
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: alerts.length,
+      itemBuilder: (context, idx) {
+        final a = alerts[idx];
+        final customer = service.getCustomerById(a['customer_id']);
+        return Card(
+          color: AppTheme.darkCard,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            leading: const Icon(Icons.warning, color: AppTheme.dangerRed),
+            title: Text(customer?['full_name'] ?? 'Risk Alert', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            subtitle: Text('Missed Dues Count: ${a['missed_dues_count']}'),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(color: AppTheme.dangerRed.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+              child: const Text('HIGH RISK', style: TextStyle(color: AppTheme.dangerRed, fontSize: 8, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        );
       },
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Welcome, ${service.currentUserName.split(' ')[0]}',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        'Here is your fintech portfolio overview.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Risk Badge count
-                if (alerts.isNotEmpty)
-                  GestureDetector(
-                    onTap: () {
-                      _showEmergencyAlertsSheet(context, alerts, service);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppTheme.dangerRed.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.dangerRed.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.warning_amber_rounded, color: AppTheme.dangerRed, size: 16),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${alerts.length} RISK ALERTS',
-                            style: const TextStyle(color: AppTheme.dangerRed, fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // KPI CARDS GRID (Feature 1: Premium color-coded/gradient cards)
-            GridView.count(
-              crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.5,
-              children: [
-                _buildKPICard(
-                  title: 'Active Customers',
-                  value: '${customers.length}',
-                  trend: '+12% this mo',
-                  icon: Icons.people_outline,
-                  gradient: AppTheme.primaryGradient,
-                ),
-                _buildKPICard(
-                  title: 'Loan Portfolio',
-                  value: _currencyFormat.format(totalPortfolio),
-                  trend: 'Active Accounts',
-                  icon: Icons.account_balance_outlined,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF3B82F6), Color(0xFF06B6D4)],
-                  ),
-                ),
-                _buildKPICard(
-                  title: 'Expected Today',
-                  value: _currencyFormat.format(expectedCollections / 30),
-                  trend: 'Today\'s Target',
-                  icon: Icons.hourglass_empty,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
-                  ),
-                ),
-                _buildKPICard(
-                  title: 'Collection Efficiency',
-                  value: '${efficiency.toStringAsFixed(1)}%',
-                  trend: '+2.1% efficiency',
-                  icon: Icons.trending_up,
-                  gradient: AppTheme.successGradient,
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Feature 19: Predictive Cashflow & Trend Analytics
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: AppTheme.glassDecoration(context: context),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Predictive Cashflow Forecast',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            'Based on historical payment algorithms',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
-                      const Icon(Icons.auto_awesome, color: AppTheme.primaryCyan, size: 20),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    height: 180,
-                    child: LineChart(
-                      LineChartData(
-                        gridData: const FlGridData(show: false),
-                        titlesData: const FlTitlesData(show: false),
-                        borderData: FlBorderData(show: false),
-                        minX: 0,
-                        maxX: 6,
-                        minY: 0,
-                        maxY: 60000,
-                        lineBarsData: [
-                          LineChartBarData(
-                            spots: [
-                              const FlSpot(0, 10000),
-                              const FlSpot(1, 18000),
-                              const FlSpot(2, 15000),
-                              const FlSpot(3, 30000),
-                              FlSpot(4, forecast['tomorrow']! / 2),
-                              FlSpot(5, forecast['tomorrow']!),
-                              FlSpot(6, forecast['weekly']! / 2),
-                            ],
-                            isCurved: true,
-                            gradient: const LinearGradient(colors: [AppTheme.primaryBlue, AppTheme.primaryCyan]),
-                            barWidth: 4,
-                            isStrokeCapRound: true,
-                            dotData: const FlDotData(show: true),
-                            belowBarData: BarAreaData(
-                              show: true,
-                              gradient: LinearGradient(
-                                colors: [
-                                  AppTheme.primaryBlue.withValues(alpha: 0.2),
-                                  AppTheme.primaryCyan.withValues(alpha: 0.05)
-                                ],
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildForecastColumn('Tomorrow', _currencyFormat.format(forecast['tomorrow'])),
-                      _buildForecastColumn('Weekly Expected', _currencyFormat.format(forecast['weekly'])),
-                      _buildForecastColumn('Monthly Revenue', _currencyFormat.format(forecast['monthly'])),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Feature 12 & 11: Chit Fund & Gold Loan Dashboards Overview
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
-                      foregroundColor: AppTheme.goldPremium,
-                      side: BorderSide(color: AppTheme.goldPremium.withValues(alpha: 0.3)),
-                    ),
-                    icon: const Icon(Icons.monetization_on_outlined),
-                    label: const Text('Gold Loan Desk'),
-                    onPressed: () {
-                      _showGoldLoanAppSheet(context, service);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
-                      foregroundColor: AppTheme.primaryBlue,
-                      side: BorderSide(color: AppTheme.primaryBlue.withValues(alpha: 0.3)),
-                    ),
-                    icon: const Icon(Icons.groups_3_outlined),
-                    label: const Text('Chit Fund Desk'),
-                    onPressed: () {
-                      _showChitFundAppSheet(context, service);
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Recent Realtime Notification center
-            const Text(
-              'Realtime Audit Stream',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: service.getNotifications().take(3).length,
-              itemBuilder: (context, idx) {
-                final n = service.getNotifications()[idx];
-                Color badgeColor = AppTheme.primaryBlue;
-                if (n['type'] == 'danger') badgeColor = AppTheme.dangerRed;
-                if (n['type'] == 'success') badgeColor = AppTheme.neonGreen;
-                if (n['type'] == 'warning') badgeColor = AppTheme.warningOrange;
-
-                return Card(
-                  color: isDark ? AppTheme.darkCard : Colors.white,
-                  elevation: 0,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
-                  ),
-                  child: ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: badgeColor.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.notifications_active_outlined, color: badgeColor, size: 20),
-                    ),
-                    title: Text(n['title'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    subtitle: Text(n['message'], style: const TextStyle(fontSize: 11)),
-                    trailing: Text(n['time'], style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _buildKPICard({
-    required String title,
-    required String value,
-    required String trend,
-    required IconData icon,
-    required Gradient gradient,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: gradient.colors.first.withValues(alpha: 0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-              ),
-              Icon(icon, color: Colors.white70, size: 16),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  value,
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
-                ),
-              ),
-              Text(
-                trend,
-                style: const TextStyle(color: Colors.white60, fontSize: 9),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildForecastColumn(String label, String value) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.primaryCyan)),
-      ],
-    );
+  bool _shouldShowQuickActionsFab(SupabaseService service) {
+    // Only Agent gets the Voice recording entries directly as quick FAB action
+    return service.currentRole == AppUserRole.collectionAgent && _selectedBottomNavIndex == 0;
   }
 
   // ==========================================
@@ -687,7 +425,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  // Voice speech simulation dialog (Feature 6)
+  // Voice speech simulation dialog
   void _showVoiceEntryDialog(BuildContext context, SupabaseService service) {
     showDialog(
       context: context,
@@ -708,7 +446,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    'Say collection details, e.g. "Ravi paid 23536" or "Ananya paid 10000"',
+                    'Say collection details, e.g. "Ravi Kumar paid 23536" or "Ananya Sharma paid 10000"',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
@@ -726,7 +464,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         icon: const Icon(Icons.mic, size: 32, color: Colors.white),
                         onPressed: () async {
                           setDialogState(() => _isListeningVoice = true);
-                          // Simulate listening delay
                           await Future.delayed(const Duration(milliseconds: 2000));
                           if (context.mounted) {
                             setDialogState(() {
@@ -781,7 +518,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Could not auto-parse speech structure. Try saying: "[Customer Name] paid [Amount]"'),
+                            content: Text('Could not auto-parse speech. Try saying: "[Customer Name] paid [Amount]"'),
                             backgroundColor: AppTheme.dangerRed,
                           ),
                         );
@@ -795,90 +532,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           },
         );
       },
-    );
-  }
-
-  // Feature 18: Emergency alerts panel
-  void _showEmergencyAlertsSheet(BuildContext context, List<Map<String, dynamic>> alerts, SupabaseService service) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.emergency_share, color: AppTheme.dangerRed),
-                  SizedBox(width: 8),
-                  Text('Emergency Risk Alerts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: alerts.length,
-                  itemBuilder: (context, idx) {
-                    final a = alerts[idx];
-                    final customer = service.getCustomerById(a['customer_id']);
-                    return ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: AppTheme.dangerRed,
-                        child: Icon(Icons.priority_high, color: Colors.white),
-                      ),
-                      title: Text(customer?['full_name'] ?? 'Unknown Customer', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('${a['missed_dues_count']} payments missed in a row.'),
-                      trailing: TextButton(
-                        onPressed: () {
-                          // resolve mock alert
-                          setState(() {
-                            a['status'] = 'resolved';
-                          });
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Resolve'),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // Feature 11: Gold Loan appraisal sheet
-  void _showGoldLoanAppSheet(BuildContext context, SupabaseService service) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.75,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => GoldLoanWidget(scrollController: scrollController),
-      ),
-    );
-  }
-
-  // Feature 12: Chit Fund groups list sheet
-  void _showChitFundAppSheet(BuildContext context, SupabaseService service) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.75,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => ChitFundWidget(scrollController: scrollController),
-      ),
     );
   }
 }

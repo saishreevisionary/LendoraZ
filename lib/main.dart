@@ -33,7 +33,7 @@ class LendoraZApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.dark, // Defaulting to premium dark mode as specified
+      themeMode: service.themeMode,
       home: const AuthGate(),
       routes: {
         '/login': (context) => const LoginScreen(),

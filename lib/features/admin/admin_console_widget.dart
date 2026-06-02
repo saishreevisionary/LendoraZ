@@ -17,24 +17,18 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
   bool _isLoading = false;
   List<Map<String, dynamic>> _profiles = [];
   List<Map<String, dynamic>> _auditLogs = [];
-  List<Map<String, dynamic>> _settings = [];
 
-  // Controllers for settings editing
-  final Map<String, TextEditingController> _settingsControllers = {};
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadAllData();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    for (var controller in _settingsControllers.values) {
-      controller.dispose();
-    }
     super.dispose();
   }
 
@@ -44,23 +38,10 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
       final service = ref.read(supabaseServiceProvider);
       final profiles = await service.getAllProfiles();
       final logs = await service.getAuditLogs();
-      final settings = await service.getSystemSettings();
-
-      // Configure text controllers for settings
-      for (var setting in settings) {
-        final key = setting['key'] as String;
-        final value = setting['value'] as String;
-        if (!_settingsControllers.containsKey(key)) {
-          _settingsControllers[key] = TextEditingController(text: value);
-        } else {
-          _settingsControllers[key]!.text = value;
-        }
-      }
 
       setState(() {
         _profiles = profiles;
         _auditLogs = logs;
-        _settings = settings;
         _isLoading = false;
       });
     } catch (e) {
@@ -103,35 +84,7 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
     }
   }
 
-  Future<void> _saveSetting(String key) async {
-    final newValue = _settingsControllers[key]?.text.trim() ?? '';
-    if (newValue.isEmpty) return;
 
-    setState(() => _isLoading = true);
-    try {
-      final service = ref.read(supabaseServiceProvider);
-      await service.updateSystemSetting(key, newValue);
-      await _loadAllData();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Setting "$key" updated to "$newValue".'),
-            backgroundColor: AppTheme.neonGreen,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save setting: $e'),
-            backgroundColor: AppTheme.dangerRed,
-          ),
-        );
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +104,6 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
             tabs: const [
               Tab(icon: Icon(Icons.people_outline), text: 'Users'),
               Tab(icon: Icon(Icons.history_toggle_off), text: 'Audit Logs'),
-              Tab(icon: Icon(Icons.settings_outlined), text: 'System Config'),
               Tab(icon: Icon(Icons.storage_outlined), text: 'DB Status'),
             ],
           ),
@@ -166,7 +118,6 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
                   children: [
                     _buildUserManagementTab(isDark),
                     _buildAuditLogsTab(isDark),
-                    _buildSettingsTab(isDark),
                     _buildDatabaseStatusTab(isDark),
                   ],
                 ),
@@ -289,7 +240,7 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
                     ),
                     Switch(
                       value: status == 'active',
-                      activeColor: AppTheme.neonGreen,
+                      activeThumbColor: AppTheme.neonGreen,
                       inactiveThumbColor: AppTheme.dangerRed,
                       inactiveTrackColor: AppTheme.dangerRed.withValues(alpha: 0.2),
                       onChanged: (active) {
@@ -317,7 +268,7 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
               itemBuilder: (context, idx) {
                 final log = _auditLogs[idx];
                 final action = log['action'] as String? ?? 'ACTION';
-                final actorName = log['profiles']?['full_name'] as String? ?? 'System';
+                final actorName = log['users']?['full_name'] as String? ?? 'System';
                 final timestampStr = log['created_at'] as String? ?? '';
                 final details = log['details'] as Map<String, dynamic>? ?? {};
 
@@ -402,75 +353,7 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
     );
   }
 
-  Widget _buildSettingsTab(bool isDark) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'System Configurations',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Control global interest, penalty, and offline sync parameters.',
-            style: TextStyle(color: Colors.grey, fontSize: 13),
-          ),
-          const SizedBox(height: 20),
-          ..._settings.map((setting) {
-            final key = setting['key'] as String;
-            final desc = setting['description'] as String? ?? 'No description';
-            
-            return Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: AppTheme.glassDecoration(context: context),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    key.toUpperCase().replaceAll('_', ' '),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.primaryBlue),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    desc,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _settingsControllers[key],
-                          decoration: InputDecoration(
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: () => _saveSetting(key),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryBlue,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Icon(Icons.save_outlined, color: Colors.white),
-                      )
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildDatabaseStatusTab(bool isDark) {
     // Generate some mock/active count numbers for admin viewing
@@ -479,7 +362,6 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
     final customerCount = service.getCustomers().length;
     final loanCount = service.getLoans().length;
     final collectionCount = service.getCollections().length;
-    final alertCount = service.getAlerts().length;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -505,7 +387,7 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
             mainAxisSpacing: 12,
             childAspectRatio: 1.6,
             children: [
-              _buildDBStatCard('public.profiles', '${_profiles.length}', Icons.people_outline, AppTheme.primaryBlue),
+              _buildDBStatCard('public.users', '${_profiles.length}', Icons.people_outline, AppTheme.primaryBlue),
               _buildDBStatCard('public.customers', '$customerCount', Icons.assignment_ind_outlined, AppTheme.primaryCyan),
               _buildDBStatCard('public.loans', '$loanCount', Icons.credit_card_outlined, AppTheme.neonGreen),
               _buildDBStatCard('public.collections', '$collectionCount', Icons.receipt_long_outlined, AppTheme.warningOrange),
@@ -530,7 +412,7 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
                   ],
                 ),
                 const SizedBox(height: 12),
-                _buildTriggerLogItem('on_auth_user_created', 'ACTIVE', 'Copies newly created auth.users to public.profiles'),
+                _buildTriggerLogItem('on_auth_user_created', 'ACTIVE', 'Copies newly created auth.users to public.users'),
                 _buildTriggerLogItem('on_collection_inserted', 'ACTIVE', 'Recalculates loan balance and penalities'),
               ],
             ),

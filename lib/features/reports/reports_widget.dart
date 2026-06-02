@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/network/supabase_service.dart';
-import '../../core/network/providers.dart';
+
 
 class ReportsWidget extends ConsumerStatefulWidget {
   const ReportsWidget({super.key});

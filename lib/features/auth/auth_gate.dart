@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../core/network/supabase_service.dart';
 import '../../core/network/providers.dart';
 import '../dashboard/dashboard_screen.dart';
 import 'login_screen.dart';

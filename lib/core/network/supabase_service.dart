@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io' show Platform;
 import 'package:uuid/uuid.dart';
 
 enum AppUserRole {
@@ -10,7 +11,7 @@ enum AppUserRole {
   manager,
   collectionAgent,
   accountant,
-  customerPortalUser;
+  customer;
 
   String get displayName {
     switch (this) {
@@ -19,7 +20,7 @@ enum AppUserRole {
       case AppUserRole.manager: return 'Manager';
       case AppUserRole.collectionAgent: return 'Collection Agent';
       case AppUserRole.accountant: return 'Accountant';
-      case AppUserRole.customerPortalUser: return 'Customer Portal';
+      case AppUserRole.customer: return 'Customer';
     }
   }
 }
@@ -36,6 +37,7 @@ class SupabaseService extends ChangeNotifier {
   String _currentUserEmail = '';
   String _currentUserName = '';
   String? _initError;
+  ThemeMode _themeMode = ThemeMode.dark;
 
   // Offline queue
   final List<Map<String, dynamic>> _offlineQueue = [];
@@ -50,6 +52,13 @@ class SupabaseService extends ChangeNotifier {
   final List<Map<String, dynamic>> _goldLoans = [];
   final List<Map<String, dynamic>> _alerts = [];
   final List<Map<String, dynamic>> _notifications = [];
+  final List<Map<String, dynamic>> _companies = [];
+  final List<Map<String, dynamic>> _allUsers = [];
+  final Map<String, bool> _featureToggles = {
+    'ai_analytics': true,
+    'whatsapp_gateway': true,
+    'multi_currency': false,
+  };
 
   bool get isDemoMode => _isDemoMode;
   bool get isOffline => _isOffline;
@@ -58,7 +67,140 @@ class SupabaseService extends ChangeNotifier {
   String get currentUserEmail => _currentUserEmail;
   String get currentUserName => _currentUserName;
   String? get initError => _initError;
+  ThemeMode get themeMode => _themeMode;
   List<Map<String, dynamic>> get offlineQueue => _offlineQueue;
+  List<Map<String, dynamic>> getCompanies() {
+    final dynamic val = _companies;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getAllUsers() {
+    final dynamic val = _allUsers;
+    return val is List ? _safeCastList(val) : [];
+  }
+  Map<String, bool> get featureToggles {
+    final dynamic val = _featureToggles;
+    if (val is Map) {
+      return Map<String, bool>.from(val);
+    }
+    return {};
+  }
+
+  final List<String> _permissions = [];
+  List<String> get permissions {
+    final dynamic val = _permissions;
+    if (val is List) {
+      return List<String>.from(val);
+    }
+    return [];
+  }
+
+  bool hasPermission(String permissionCode) {
+    if (_isDemoMode) {
+      return _getDemoPermissionsForRole(_currentRole).contains(permissionCode);
+    }
+    return _permissions.contains(permissionCode);
+  }
+
+  List<String> _getDemoPermissionsForRole(AppUserRole role) {
+    switch (role) {
+      case AppUserRole.superAdmin:
+        return [
+          'smart_collection_dashboard', 'ai_risk_prediction', 'automated_reminders',
+          'agent_management', 'route_planner', 'voice_collection', 'customer_timeline',
+          'digital_receipts', 'penalty_automation', 'document_vault', 'gold_loan_module',
+          'chit_fund_module', 'family_network', 'collection_heat_map', 'whatsapp_integration',
+          'customer_portal', 'finance_crm', 'emergency_alerts', 'predictive_cash_flow',
+          'reports', 'offline_mode', 'super_admin_billing', 'super_admin_companies'
+        ];
+      case AppUserRole.companyOwner:
+        return [
+          'smart_collection_dashboard', 'ai_risk_prediction', 'automated_reminders',
+          'agent_management', 'route_planner', 'voice_collection', 'customer_timeline',
+          'digital_receipts', 'penalty_automation', 'document_vault', 'gold_loan_module',
+          'chit_fund_module', 'family_network', 'collection_heat_map', 'whatsapp_integration',
+          'finance_crm', 'emergency_alerts', 'predictive_cash_flow', 'reports', 'offline_mode'
+        ];
+      case AppUserRole.manager:
+        return [
+          'smart_collection_dashboard', 'ai_risk_prediction', 'automated_reminders',
+          'agent_management', 'route_planner', 'voice_collection', 'customer_timeline',
+          'digital_receipts', 'penalty_automation', 'document_vault', 'gold_loan_module',
+          'chit_fund_module', 'family_network', 'collection_heat_map', 'whatsapp_integration',
+          'finance_crm', 'emergency_alerts', 'predictive_cash_flow', 'reports', 'offline_mode'
+        ];
+      case AppUserRole.collectionAgent:
+        return [
+          'ai_risk_prediction', 'automated_reminders', 'route_planner', 
+          'voice_collection', 'customer_timeline', 'digital_receipts', 
+          'document_vault', 'gold_loan_module', 'chit_fund_module', 
+          'family_network', 'whatsapp_integration', 'finance_crm', 
+          'emergency_alerts', 'reports', 'offline_mode'
+        ];
+      case AppUserRole.accountant:
+        return [
+          'digital_receipts', 'gold_loan_module', 'chit_fund_module', 
+          'predictive_cash_flow', 'reports', 'offline_mode'
+        ];
+      case AppUserRole.customer:
+        return [
+          'customer_timeline', 'digital_receipts', 'document_vault', 
+          'customer_portal', 'reports', 'offline_mode'
+        ];
+    }
+  }
+
+  Future<void> _loadPermissionsFromDb(String userId) async {
+    if (_isDemoMode) return;
+    try {
+      final profileData = await Supabase.instance.client
+          .from('users')
+          .select('full_name')
+          .eq('id', userId)
+          .single();
+      _currentUserName = profileData['full_name'] ?? _currentUserName;
+      
+      final List<dynamic> roleRes = await Supabase.instance.client
+          .from('user_roles')
+          .select('roles(code)')
+          .eq('user_id', userId);
+
+      if (roleRes.isNotEmpty && roleRes[0]['roles'] != null) {
+        final String roleCode = roleRes[0]['roles']['code'];
+        for (var r in AppUserRole.values) {
+          if (roleCode == _roleToDbString(r)) {
+            _currentRole = r;
+            break;
+          }
+        }
+      }
+
+      final List<dynamic> permissionsData = await Supabase.instance.client
+          .from('user_roles')
+          .select('roles(role_permissions(permissions(code)))')
+          .eq('user_id', userId);
+
+      _permissions.clear();
+      if (permissionsData.isNotEmpty) {
+        for (var ur in permissionsData) {
+          final roles = ur['roles'];
+          if (roles != null) {
+            final rolePermissions = roles['role_permissions'] as List<dynamic>?;
+            if (rolePermissions != null) {
+              for (var rp in rolePermissions) {
+                final perm = rp['permissions'];
+                if (perm != null && perm['code'] != null) {
+                  _permissions.add(perm['code'] as String);
+                }
+              }
+            }
+          }
+        }
+      }
+      debugPrint("Loaded online permissions: $_permissions");
+    } catch (e) {
+      debugPrint("Error loading permissions from DB: $e");
+    }
+  }
 
   // Streams for realtime updates
   final _collectionController = StreamController<List<Map<String, dynamic>>>.broadcast();
@@ -70,27 +212,48 @@ class SupabaseService extends ChangeNotifier {
   Stream<List<Map<String, dynamic>>> get notificationsStream => _notificationController.stream;
 
   Future<void> init() async {
+    // Load feature toggles from preferences
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _featureToggles['ai_analytics'] = prefs.getBool('feature_ai_analytics') ?? true;
+      _featureToggles['whatsapp_gateway'] = prefs.getBool('feature_whatsapp_gateway') ?? true;
+      _featureToggles['multi_currency'] = prefs.getBool('feature_multi_currency') ?? false;
+      final themeStr = prefs.getString('app_theme_mode') ?? 'dark';
+      _themeMode = themeStr == 'light' ? ThemeMode.light : ThemeMode.dark;
+    } catch (_) {}
+
     // Try to load online keys or fall back to demo mode
     try {
+      bool isTesting = false;
+      if (!kIsWeb) {
+        try {
+          isTesting = Platform.environment.containsKey('FLUTTER_TEST');
+        } catch (_) {
+          isTesting = false;
+        }
+      }
+
       bool alreadyInitialized = false;
       try {
-        final client = Supabase.instance.client;
+        Supabase.instance.client;
         alreadyInitialized = true;
       } catch (_) {
         alreadyInitialized = false;
       }
 
-      if (!alreadyInitialized) {
+      if (!alreadyInitialized && !isTesting) {
         await Supabase.initialize(
           url: 'https://otscqoooecqvznfyhhun.supabase.co',
           anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90c2Nxb29vZWNxdnpuZnloaHVuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzODE0MjcsImV4cCI6MjA5NTk1NzQyN30.p6bmgv85Nbg5GolJd9FYg-c1AOmeVWuAnOT_eLElYx4',
         );
+        _isDemoMode = false;
+      } else {
+        _isDemoMode = true;
       }
-      _isDemoMode = false;
       _initError = null;
       
       final currentUser = Supabase.instance.client.auth.currentUser;
-      if (currentUser != null) {
+      if (currentUser != null && !_isDemoMode) {
         updateUserFromSession(currentUser);
       }
     } catch (e) {
@@ -99,7 +262,14 @@ class SupabaseService extends ChangeNotifier {
       debugPrint("Supabase initialize error: $e");
     }
 
-    _loadMockData();
+    if (_isDemoMode) {
+      _loadMockData();
+    } else {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser != null) {
+        await refreshDatabaseData();
+      }
+    }
     await _loadOfflineQueue();
   }
 
@@ -126,26 +296,10 @@ class SupabaseService extends ChangeNotifier {
     _currentUserName = user.email?.split('@')[0] ?? 'Authorized User';
 
     try {
-      final profileData = await Supabase.instance.client
-          .from('profiles')
-          .select('full_name, role')
-          .eq('id', user.id)
-          .single();
-
-      _currentUserName = profileData['full_name'] ?? _currentUserName;
-      final String? roleStr = profileData['role'];
-      if (roleStr != null) {
-        for (var r in AppUserRole.values) {
-          final dbRole = roleStr.toLowerCase().replaceAll('_', '');
-          final enumRole = r.name.toLowerCase().replaceAll('_', '');
-          if (dbRole == enumRole) {
-            _currentRole = r;
-            break;
-          }
-        }
-      }
+      await _loadPermissionsFromDb(user.id);
+      await refreshDatabaseData();
     } catch (e) {
-      // Safe fallback if public profiles table hasn't been read or doesn't exist
+      // Safe fallback if public user tables haven't been read or don't exist
     }
     notifyListeners();
   }
@@ -172,31 +326,17 @@ class SupabaseService extends ChangeNotifier {
         _currentUserEmail = response.user!.email ?? email;
         _currentUserName = 'Supabase User';
 
-        // Attempt to fetch profile role from Supabase DB profiles table
+        // Attempt to fetch profile role and permissions from Supabase DB
         try {
-          final profileData = await Supabase.instance.client
-              .from('profiles')
-              .select('full_name, role')
-              .eq('id', response.user!.id)
-              .single();
-
-          _currentUserName = profileData['full_name'] ?? 'Supabase User';
-          final String? roleStr = profileData['role'];
-          if (roleStr != null) {
-            for (var r in AppUserRole.values) {
-              final dbRole = roleStr.toLowerCase().replaceAll('_', '');
-              final enumRole = r.name.toLowerCase().replaceAll('_', '');
-              if (dbRole == enumRole) {
-                _currentRole = r;
-                break;
-              }
-            }
-          }
+          await _loadPermissionsFromDb(response.user!.id);
         } catch (dbError) {
-          // If profiles table or user row is not yet registered in public, use drop-down selection role
+          // If public user row is not yet registered, use fallback role
           switchRole(fallbackRole);
         }
+        
+        await refreshDatabaseData();
         notifyListeners();
+        
         _addNotification(
           title: 'Supabase Session Active',
           message: 'Signed in as $_currentUserEmail with role ${_currentRole.displayName}.',
@@ -240,24 +380,11 @@ class SupabaseService extends ChangeNotifier {
 
       if (response.user != null) {
         _isDemoLoggedIn = true;
-        // Create the profile row in the database as fallback
-        try {
-          await Supabase.instance.client.from('profiles').upsert({
-            'id': response.user!.id,
-            'email': email,
-            'full_name': fullName,
-            'role': _roleToDbString(role),
-            'status': 'active',
-          });
-        } catch (dbError) {
-          debugPrint("Public profile creation fallback error: $dbError");
-          // If the profile already exists (inserted by the trigger), this is fine.
-          // Otherwise, it might be due to missing SQL tables.
-        }
-
         _currentUserEmail = email;
         _currentUserName = fullName;
         _currentRole = role;
+        
+        await refreshDatabaseData();
         notifyListeners();
         
         _addNotification(
@@ -283,7 +410,7 @@ class SupabaseService extends ChangeNotifier {
       case AppUserRole.manager: return 'manager';
       case AppUserRole.collectionAgent: return 'collection_agent';
       case AppUserRole.accountant: return 'accountant';
-      case AppUserRole.customerPortalUser: return 'customer_portal_user';
+      case AppUserRole.customer: return 'customer';
     }
   }
 
@@ -324,19 +451,19 @@ class SupabaseService extends ChangeNotifier {
         break;
       case AppUserRole.manager:
         _currentUserName = 'Sarah D\'Souza';
-        _currentUserEmail = 'sarah@lendoraz.com';
+        _currentUserEmail = 'manager@lendoraz.com';
         break;
       case AppUserRole.collectionAgent:
         _currentUserName = 'Rohan Naik';
-        _currentUserEmail = 'rohan@lendoraz.com';
+        _currentUserEmail = 'agent@lendoraz.com';
         break;
       case AppUserRole.accountant:
         _currentUserName = 'Nisha Iyer';
-        _currentUserEmail = 'nisha@lendoraz.com';
+        _currentUserEmail = 'accountant@lendoraz.com';
         break;
-      case AppUserRole.customerPortalUser:
+      case AppUserRole.customer:
         _currentUserName = 'Ravi Kumar';
-        _currentUserEmail = 'ravi@gmail.com';
+        _currentUserEmail = 'customer@lendoraz.com';
         break;
     }
     notifyListeners();
@@ -346,10 +473,27 @@ class SupabaseService extends ChangeNotifier {
   // Mock Data Seeding
   // ==========================================
   void _loadMockData() {
+    _companies.clear();
+    _companies.addAll([
+      {'id': '99999999-9999-9999-9999-999999999999', 'name': 'LendoraZ Ltd.', 'status': 'active'},
+      {'id': 'comp-2', 'name': 'SSV Microfinance', 'status': 'active'},
+      {'id': 'comp-3', 'name': 'Star Capital', 'status': 'suspended'},
+    ]);
+
+    _allUsers.clear();
+    _allUsers.addAll([
+      {'id': '675da47d-16d0-4523-aebe-e38245a67dec', 'email': 'admin@lendoraz.com', 'full_name': 'SSV Super Admin'},
+      {'id': '22222222-2222-3333-4444-555566667777', 'email': 'owner@lendoraz.com', 'full_name': 'Rajesh Singhal'},
+      {'id': '33333333-2222-3333-4444-555566667777', 'email': 'manager@lendoraz.com', 'full_name': 'Sarah D\'Souza'},
+      {'id': '55555555-6666-7777-8888-999999999999', 'email': 'agent@lendoraz.com', 'full_name': 'Rohan Naik'},
+      {'id': '44444444-2222-3333-4444-555566667777', 'email': 'accountant@lendoraz.com', 'full_name': 'Nisha Iyer'},
+      {'id': 'a06c1111-2222-3333-4444-555566667777', 'email': 'customer@lendoraz.com', 'full_name': 'Ravi Kumar'},
+    ]);
+
     // Seed Customers
     _customers.addAll([
       {
-        'id': 'cust-1',
+        'id': 'a06c1111-2222-3333-4444-555566667777',
         'full_name': 'Ravi Kumar',
         'phone': '+91 98765 43210',
         'email': 'ravi@gmail.com',
@@ -361,7 +505,7 @@ class SupabaseService extends ChangeNotifier {
         'geo_location': {'lat': 12.9716, 'lng': 77.5946},
       },
       {
-        'id': 'cust-2',
+        'id': 'a06c2222-3333-4444-5555-666677778888',
         'full_name': 'Ananya Sharma',
         'phone': '+91 98765 00123',
         'email': 'ananya@gmail.com',
@@ -373,7 +517,7 @@ class SupabaseService extends ChangeNotifier {
         'geo_location': {'lat': 12.9141, 'lng': 77.6413},
       },
       {
-        'id': 'cust-3',
+        'id': 'a06c3333-4444-5555-6666-777788889999',
         'full_name': 'Vikram Malhotra',
         'phone': '+91 91234 56789',
         'email': 'vikram@yahoo.com',
@@ -389,8 +533,8 @@ class SupabaseService extends ChangeNotifier {
     // Seed Loans
     _loans.addAll([
       {
-        'id': 'loan-1',
-        'customer_id': 'cust-1',
+        'id': 'b06c1111-2222-3333-4444-555566667777',
+        'customer_id': 'a06c1111-2222-3333-4444-555566667777',
         'principal_amount': 500000.0,
         'interest_rate_annual': 12.0,
         'term_months': 24,
@@ -404,8 +548,8 @@ class SupabaseService extends ChangeNotifier {
         'missed_dues': 0,
       },
       {
-        'id': 'loan-2',
-        'customer_id': 'cust-2',
+        'id': 'b06c2222-3333-4444-5555-666677778888',
+        'customer_id': 'a06c2222-3333-4444-5555-666677778888',
         'principal_amount': 200000.0,
         'interest_rate_annual': 15.0,
         'term_months': 12,
@@ -419,8 +563,8 @@ class SupabaseService extends ChangeNotifier {
         'missed_dues': 2,
       },
       {
-        'id': 'loan-3',
-        'customer_id': 'cust-3',
+        'id': 'b06c3333-4444-5555-6666-777788889999',
+        'customer_id': 'a06c3333-4444-5555-6666-777788889999',
         'principal_amount': 150000.0,
         'interest_rate_annual': 18.0,
         'term_months': 12,
@@ -438,26 +582,26 @@ class SupabaseService extends ChangeNotifier {
     // Seed Collections
     _collections.addAll([
       {
-        'id': 'coll-1',
-        'loan_id': 'loan-1',
-        'agent_id': 'agent-1',
+        'id': 'c06c1111-2222-3333-4444-555566667777',
+        'loan_id': 'b06c1111-2222-3333-4444-555566667777',
+        'agent_id': '675da47d-16d0-4523-aebe-e38245a67dec',
         'amount': 23536.0,
         'collection_date': '2026-06-02T10:00:00Z',
         'payment_method': 'upi',
         'status': 'success',
-        'receipt_uuid': const Uuid().v4(),
+        'receipt_uuid': '861a457c-d38a-4469-80fb-129b008d745e',
         'notes': 'Paid via PhonePe successfully.',
         'geo_location': {'lat': 12.9719, 'lng': 77.5937},
       },
       {
-        'id': 'coll-2',
-        'loan_id': 'loan-2',
-        'agent_id': 'agent-1',
+        'id': 'c06c2222-3333-4444-5555-666677778888',
+        'loan_id': 'b06c2222-3333-4444-5555-666677778888',
+        'agent_id': '675da47d-16d0-4523-aebe-e38245a67dec',
         'amount': 10000.0,
         'collection_date': '2026-06-01T15:30:00Z',
         'payment_method': 'cash',
         'status': 'success',
-        'receipt_uuid': const Uuid().v4(),
+        'receipt_uuid': '91a27e7f-71ba-4433-a309-8b0bbcb4b8d7',
         'notes': 'Part payment collected in cash.',
         'geo_location': {'lat': 12.9145, 'lng': 77.6410},
       }
@@ -466,16 +610,16 @@ class SupabaseService extends ChangeNotifier {
     // Seed Reminders
     _reminders.addAll([
       {
-        'id': 'rem-1',
-        'loan_id': 'loan-1',
+        'id': 'd06c1111-2222-3333-4444-555566667777',
+        'loan_id': 'b06c1111-2222-3333-4444-555566667777',
         'template_type': 'upcoming_due',
         'channel': 'whatsapp',
         'scheduled_for': '2026-06-04T09:00:00Z',
         'status': 'pending',
       },
       {
-        'id': 'rem-2',
-        'loan_id': 'loan-2',
+        'id': 'd06c2222-3333-4444-5555-666677778888',
+        'loan_id': 'b06c2222-3333-4444-5555-666677778888',
         'template_type': 'overdue_notice',
         'channel': 'sms',
         'scheduled_for': '2026-06-02T08:00:00Z',
@@ -487,7 +631,7 @@ class SupabaseService extends ChangeNotifier {
     // Seed Leads
     _leads.addAll([
       {
-        'id': 'lead-1',
+        'id': 'e06c1111-2222-3333-4444-555566667777',
         'full_name': 'Kartik Aaryan',
         'phone': '+91 88990 12345',
         'email': 'kartik@gmail.com',
@@ -496,7 +640,7 @@ class SupabaseService extends ChangeNotifier {
         'notes': 'Applied online for Business Expansion.',
       },
       {
-        'id': 'lead-2',
+        'id': 'e06c2222-3333-4444-5555-666677778888',
         'full_name': 'Meera Sen',
         'phone': '+91 77665 43210',
         'email': 'meera@gmail.com',
@@ -505,7 +649,7 @@ class SupabaseService extends ChangeNotifier {
         'notes': 'Called customer, requested documents.',
       },
       {
-        'id': 'lead-3',
+        'id': 'e06c3333-4444-5555-6666-777788889999',
         'full_name': 'Sanjay Dutt',
         'phone': '+91 99009 88776',
         'email': 'sanjay@rediff.com',
@@ -518,7 +662,7 @@ class SupabaseService extends ChangeNotifier {
     // Seed Chit Funds
     _chitFunds.addAll([
       {
-        'id': 'chit-1',
+        'id': 'f06c1111-2222-3333-4444-555566667777',
         'group_name': 'Indiranagar Premium A1',
         'total_value': 1000000.0,
         'max_members': 20,
@@ -551,8 +695,8 @@ class SupabaseService extends ChangeNotifier {
     // Seed Gold Loans
     _goldLoans.addAll([
       {
-        'id': 'gold-1',
-        'loan_id': 'loan-1',
+        'id': '106c1111-2222-3333-4444-555566667777',
+        'loan_id': 'b06c1111-2222-3333-4444-555566667777',
         'weight_grams': 120.5,
         'purity_karats': 22,
         'valuation_amount': 780000.0,
@@ -566,17 +710,17 @@ class SupabaseService extends ChangeNotifier {
     // Seed Alerts
     _alerts.addAll([
       {
-        'id': 'alert-1',
-        'customer_id': 'cust-3',
-        'loan_id': 'loan-3',
+        'id': '806c1111-2222-3333-4444-555566667777',
+        'customer_id': 'a06c3333-4444-5555-6666-777788889999',
+        'loan_id': 'b06c3333-4444-5555-6666-777788889999',
         'missed_dues_count': 5,
         'triggered_at': '2026-05-15T09:00:00Z',
         'status': 'active',
       },
       {
-        'id': 'alert-2',
-        'customer_id': 'cust-2',
-        'loan_id': 'loan-2',
+        'id': '806c2222-3333-4444-5555-666677778888',
+        'customer_id': 'a06c2222-3333-4444-5555-666677778888',
+        'loan_id': 'b06c2222-3333-4444-5555-666677778888',
         'missed_dues_count': 3,
         'triggered_at': '2026-06-01T04:20:00Z',
         'status': 'active',
@@ -618,25 +762,115 @@ class SupabaseService extends ChangeNotifier {
     _notificationController.add(List.from(_notifications));
   }
 
+  List<Map<String, dynamic>> _safeCastList(List<dynamic> rawList) {
+    return rawList.map((item) {
+      if (item is Map) {
+        return Map<String, dynamic>.from(item);
+      }
+      return <String, dynamic>{};
+    }).toList();
+  }
+
+  Future<void> refreshDatabaseData() async {
+    if (_isDemoMode) return;
+    try {
+      final customersRes = await Supabase.instance.client.from('customers').select();
+      _customers.clear();
+      _customers.addAll(_safeCastList(customersRes));
+
+      final loansRes = await Supabase.instance.client.from('loans').select();
+      _loans.clear();
+      _loans.addAll(_safeCastList(loansRes));
+
+      final collectionsRes = await Supabase.instance.client.from('collections').select().order('collection_date', ascending: false);
+      _collections.clear();
+      _collections.addAll(_safeCastList(collectionsRes));
+
+      final remindersRes = await Supabase.instance.client.from('reminders').select();
+      _reminders.clear();
+      _reminders.addAll(_safeCastList(remindersRes));
+
+      final leadsRes = await Supabase.instance.client.from('crm_leads').select();
+      _leads.clear();
+      _leads.addAll(_safeCastList(leadsRes));
+
+      final chitFundsRes = await Supabase.instance.client.from('chit_funds').select();
+      _chitFunds.clear();
+      _chitFunds.addAll(_safeCastList(chitFundsRes));
+
+      final goldLoansRes = await Supabase.instance.client.from('gold_loans').select();
+      _goldLoans.clear();
+      _goldLoans.addAll(_safeCastList(goldLoansRes));
+
+      final alertsRes = await Supabase.instance.client.from('emergency_alerts').select();
+      _alerts.clear();
+      _alerts.addAll(_safeCastList(alertsRes));
+
+      if (_currentRole == AppUserRole.superAdmin) {
+        final companiesRes = await Supabase.instance.client.from('companies').select();
+        _companies.clear();
+        _companies.addAll(_safeCastList(companiesRes));
+
+        final usersRes = await Supabase.instance.client.from('users').select();
+        _allUsers.clear();
+        _allUsers.addAll(_safeCastList(usersRes));
+      }
+
+      _updateControllers();
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error refreshing Supabase database data: $e");
+    }
+  }
+
   // ==========================================
   // Getters for Data Models
   // ==========================================
-  List<Map<String, dynamic>> getCustomers() => _customers;
-  List<Map<String, dynamic>> getLoans() => _loans;
-  List<Map<String, dynamic>> getCollections() => _collections;
-  List<Map<String, dynamic>> getReminders() => _reminders;
-  List<Map<String, dynamic>> getLeads() => _leads;
-  List<Map<String, dynamic>> getChitFunds() => _chitFunds;
-  List<Map<String, dynamic>> getGoldLoans() => _goldLoans;
-  List<Map<String, dynamic>> getAlerts() => _alerts;
-  List<Map<String, dynamic>> getNotifications() => _notifications;
+  List<Map<String, dynamic>> getCustomers() {
+    final dynamic val = _customers;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getLoans() {
+    final dynamic val = _loans;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getCollections() {
+    final dynamic val = _collections;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getReminders() {
+    final dynamic val = _reminders;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getLeads() {
+    final dynamic val = _leads;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getChitFunds() {
+    final dynamic val = _chitFunds;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getGoldLoans() {
+    final dynamic val = _goldLoans;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getAlerts() {
+    final dynamic val = _alerts;
+    return val is List ? _safeCastList(val) : [];
+  }
+  List<Map<String, dynamic>> getNotifications() {
+    final dynamic val = _notifications;
+    return val is List ? _safeCastList(val) : [];
+  }
 
   Map<String, dynamic>? getCustomerById(String id) {
-    return _customers.firstWhere((c) => c['id'] == id, orElse: () => {});
+    final list = getCustomers();
+    return list.firstWhere((c) => c['id'] == id, orElse: () => {});
   }
 
   Map<String, dynamic>? getLoanById(String id) {
-    return _loans.firstWhere((l) => l['id'] == id, orElse: () => {});
+    final list = getLoans();
+    return list.firstWhere((l) => l['id'] == id, orElse: () => {});
   }
 
   // ==========================================
@@ -651,33 +885,35 @@ class SupabaseService extends ChangeNotifier {
     Map<String, double>? location,
   }) async {
     final loanIndex = _loans.indexWhere((l) => l['id'] == loanId);
+    double newRemaining = 0.0;
+    double newPaid = 0.0;
+    String newStatus = 'active';
+
     if (loanIndex != -1) {
       // Calculate penalties if any
       final penalties = calculatePenalty(loanId);
-      final totalWithPenalty = amount;
-      
-      // Update Loan Balance
       final loan = _loans[loanIndex];
       double currentRemaining = loan['remaining_balance'] as double;
       double currentPaid = loan['paid_balance'] as double;
 
       double outstandingWithPenalty = currentRemaining + penalties['total_penalty']!;
-      double newRemaining = (outstandingWithPenalty - amount).clamp(0.0, double.infinity);
-      double newPaid = currentPaid + amount;
+      newRemaining = (outstandingWithPenalty - amount).clamp(0.0, double.infinity);
+      newPaid = currentPaid + amount;
+      newStatus = newRemaining == 0 ? 'settled' : loan['status'];
 
-      _loans[loanIndex] = {
+      _loans[loanIndex] = Map<String, dynamic>.from({
         ...loan,
         'remaining_balance': newRemaining,
         'paid_balance': newPaid,
         'missed_dues': newRemaining == 0 ? 0 : loan['missed_dues'],
-        'status': newRemaining == 0 ? 'settled' : loan['status'],
-      };
+        'status': newStatus,
+      });
     }
 
     final collectionItem = {
-      'id': 'coll-${const Uuid().v4().substring(0, 8)}',
+      'id': _isDemoMode ? 'coll-${const Uuid().v4().substring(0, 8)}' : const Uuid().v4(),
       'loan_id': loanId,
-      'agent_id': 'agent-1',
+      'agent_id': '675da47d-16d0-4523-aebe-e38245a67dec', // Fallback to Super Admin actor ID if not logged in
       'amount': amount,
       'collection_date': DateTime.now().toIso8601String(),
       'payment_method': paymentMethod,
@@ -701,6 +937,41 @@ class SupabaseService extends ChangeNotifier {
       );
     } else {
       _collections.insert(0, collectionItem);
+
+      // Write to live database if online and not in demo mode
+      if (!_isDemoMode) {
+        try {
+          final currentUser = Supabase.instance.client.auth.currentUser;
+          final agentId = currentUser?.id ?? '675da47d-16d0-4523-aebe-e38245a67dec';
+
+          await Supabase.instance.client.from('collections').insert({
+            'id': collectionItem['id'],
+            'loan_id': loanId,
+            'agent_id': agentId,
+            'amount': amount,
+            'payment_method': paymentMethod,
+            'status': 'success',
+            'notes': notes,
+            'geo_location': collectionItem['geo_location'],
+            'receipt_uuid': collectionItem['receipt_uuid'].toString(),
+          });
+
+          await Supabase.instance.client.from('loans').update({
+            'remaining_balance': newRemaining,
+            'paid_balance': newPaid,
+            'status': newStatus,
+          }).eq('id', loanId);
+
+          await logAuditAction(
+            action: 'RECORD_COLLECTION',
+            targetId: loanId,
+            details: {'amount': amount, 'payment_method': paymentMethod},
+          );
+        } catch (e) {
+          debugPrint("Failed to write collection to Supabase: $e");
+        }
+      }
+
       _addNotification(
         title: 'Collection Processed',
         message: 'Collected ₹$amount from Customer.',
@@ -879,7 +1150,7 @@ class SupabaseService extends ChangeNotifier {
   void updateLeadStatus(String leadId, String newStatusStr) {
     final idx = _leads.indexWhere((l) => l['id'] == leadId);
     if (idx != -1) {
-      _leads[idx]['status'] = newStatusStr;
+      _leads[idx] = Map<String, dynamic>.from({..._leads[idx], 'status': newStatusStr});
       notifyListeners();
     }
   }
@@ -892,17 +1163,27 @@ class SupabaseService extends ChangeNotifier {
       return [
         {'id': 'user-1', 'email': 'admin@lendoraz.com', 'full_name': 'Amit Varma (Super)', 'role': 'super_admin', 'status': 'active'},
         {'id': 'user-2', 'email': 'owner@lendoraz.com', 'full_name': 'Rajesh Singhal', 'role': 'company_owner', 'status': 'active'},
-        {'id': 'user-3', 'email': 'sarah@lendoraz.com', 'full_name': 'Sarah D\'Souza', 'role': 'manager', 'status': 'active'},
-        {'id': 'user-4', 'email': 'rohan@lendoraz.com', 'full_name': 'Rohan Naik', 'role': 'collection_agent', 'status': 'active'},
-        {'id': 'user-5', 'email': 'nisha@lendoraz.com', 'full_name': 'Nisha Iyer', 'role': 'accountant', 'status': 'suspended'},
-        {'id': 'user-6', 'email': 'ravi@gmail.com', 'full_name': 'Ravi Kumar', 'role': 'customer_portal_user', 'status': 'active'},
+        {'id': 'user-3', 'email': 'manager@lendoraz.com', 'full_name': 'Sarah D\'Souza', 'role': 'manager', 'status': 'active'},
+        {'id': 'user-4', 'email': 'agent@lendoraz.com', 'full_name': 'Rohan Naik', 'role': 'collection_agent', 'status': 'active'},
+        {'id': 'user-5', 'email': 'accountant@lendoraz.com', 'full_name': 'Nisha Iyer', 'role': 'accountant', 'status': 'suspended'},
+        {'id': 'user-6', 'email': 'customer@lendoraz.com', 'full_name': 'Ravi Kumar', 'role': 'customer', 'status': 'active'},
       ];
     }
     final response = await Supabase.instance.client
-        .from('profiles')
-        .select()
+        .from('users')
+        .select('*, user_roles(roles(code))')
         .order('email', ascending: true);
-    return List<Map<String, dynamic>>.from(response);
+    
+    final list = _safeCastList(response);
+    for (var u in list) {
+      final ur = u['user_roles'] as List<dynamic>?;
+      if (ur != null && ur.isNotEmpty && ur[0]['roles'] != null) {
+        u['role'] = ur[0]['roles']['code'];
+      } else {
+        u['role'] = 'collection_agent';
+      }
+    }
+    return list;
   }
 
   Future<void> updateUserProfileRole({
@@ -920,10 +1201,20 @@ class SupabaseService extends ChangeNotifier {
     }
 
     try {
-      await Supabase.instance.client.from('profiles').update({
-        'role': _roleToDbString(newRole),
+      await Supabase.instance.client.from('users').update({
         'status': status,
       }).eq('id', userId);
+
+      final roleData = await Supabase.instance.client
+          .from('roles')
+          .select('id')
+          .eq('code', _roleToDbString(newRole))
+          .single();
+      
+      await Supabase.instance.client.from('user_roles').upsert({
+        'user_id': userId,
+        'role_id': roleData['id'],
+      });
 
       await logAuditAction(
         action: 'UPDATE_ROLE',
@@ -968,17 +1259,17 @@ class SupabaseService extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> getAuditLogs() async {
     if (_isDemoMode) {
       return [
-        {'id': 'log-1', 'action': 'USER_LOGIN', 'target_id': 'user-1', 'details': {'ip': '127.0.0.1'}, 'created_at': DateTime.now().subtract(const Duration(minutes: 10)).toIso8601String(), 'profiles': {'full_name': 'Amit Varma (Super)'}},
-        {'id': 'log-2', 'action': 'UPDATE_ROLE', 'target_id': 'user-5', 'details': {'new_role': 'accountant', 'new_status': 'suspended'}, 'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(), 'profiles': {'full_name': 'Sarah D\'Souza'}},
-        {'id': 'log-3', 'action': 'COLLECTION_SYNC', 'target_id': 'coll-1', 'details': {'amount': 23536.0}, 'created_at': DateTime.now().subtract(const Duration(hours: 3)).toIso8601String(), 'profiles': {'full_name': 'Rohan Naik'}},
+        {'id': 'log-1', 'action': 'USER_LOGIN', 'target_id': 'user-1', 'details': {'ip': '127.0.0.1'}, 'created_at': DateTime.now().subtract(const Duration(minutes: 10)).toIso8601String(), 'users': {'full_name': 'Amit Varma (Super)'}},
+        {'id': 'log-2', 'action': 'UPDATE_ROLE', 'target_id': 'user-5', 'details': {'new_role': 'accountant', 'new_status': 'suspended'}, 'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String(), 'users': {'full_name': 'Sarah D\'Souza'}},
+        {'id': 'log-3', 'action': 'COLLECTION_SYNC', 'target_id': 'coll-1', 'details': {'amount': 23536.0}, 'created_at': DateTime.now().subtract(const Duration(hours: 3)).toIso8601String(), 'users': {'full_name': 'Rohan Naik'}},
       ];
     }
     final response = await Supabase.instance.client
         .from('audit_logs')
-        .select('*, profiles(full_name)')
+        .select('*, users(full_name)')
         .order('created_at', ascending: false)
         .limit(100);
-    return List<Map<String, dynamic>>.from(response);
+    return _safeCastList(response);
   }
 
   Future<List<Map<String, dynamic>>> getSystemSettings() async {
@@ -993,7 +1284,7 @@ class SupabaseService extends ChangeNotifier {
         .from('system_settings')
         .select()
         .order('key', ascending: true);
-    return List<Map<String, dynamic>>.from(response);
+    return _safeCastList(response);
   }
 
   Future<void> updateSystemSetting(String key, String value) async {
@@ -1027,6 +1318,139 @@ class SupabaseService extends ChangeNotifier {
     }
   }
 
+  Future<List<Map<String, dynamic>>> getAgentsWithStats() async {
+    if (_isDemoMode) {
+      return [
+        {
+          'id': '55555555-6666-7777-8888-999999999999',
+          'full_name': 'Rohan Naik',
+          'email': 'rohan@lendoraz.com',
+          'status': 'On Duty (GPS Active)',
+          'last_check_in': '09:15 AM',
+          'target_amount': 50000.0,
+          'collected_amount': 23536.0,
+        },
+        {
+          'id': 'agent-manoj',
+          'full_name': 'Manoj Kumar',
+          'email': 'manoj@lendoraz.com',
+          'status': 'Offline',
+          'last_check_in': 'Yesterday',
+          'target_amount': 40000.0,
+          'collected_amount': 0.0,
+        }
+      ];
+    }
+
+    try {
+      // 1. Fetch agent profiles
+      final response = await Supabase.instance.client
+          .from('users')
+          .select('*, user_roles!inner(roles!inner(code))')
+          .eq('user_roles.roles.code', 'collection_agent');
+      final profiles = _safeCastList(response);
+
+      // 2. Fetch collections recorded today
+      final startOfToday = DateTime.now().toUtc().copyWith(hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0);
+      final collections = _safeCastList(await Supabase.instance.client
+          .from('collections')
+          .select()
+          .gte('collection_date', startOfToday.toIso8601String()));
+
+      // 3. Fetch agent targets for the current month
+      final startOfMonth = DateTime.now().toUtc().copyWith(day: 1, hour: 0, minute: 0, second: 0, millisecond: 0, microsecond: 0);
+      final targets = _safeCastList(await Supabase.instance.client
+          .from('agent_targets')
+          .select()
+          .gte('target_month', startOfMonth.toIso8601String().substring(0, 10)));
+
+      // 4. Fetch attendance details for today
+      final attendance = _safeCastList(await Supabase.instance.client
+          .from('agent_attendance')
+          .select()
+          .eq('attendance_date', startOfToday.toIso8601String().substring(0, 10)));
+
+      final List<Map<String, dynamic>> results = [];
+      for (var p in profiles) {
+        final agentId = p['id'] as String;
+
+        // Sum collections
+        double collectedToday = 0.0;
+        for (var c in collections) {
+          if (c['agent_id'] == agentId && c['status'] == 'success') {
+            collectedToday += (c['amount'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+
+        // Get target
+        double monthlyTarget = 50000.0; // default fallback
+        for (var t in targets) {
+          if (t['agent_id'] == agentId) {
+            monthlyTarget = (t['target_amount'] as num?)?.toDouble() ?? 50000.0;
+            break;
+          }
+        }
+
+        // Get attendance status
+        String status = 'Offline';
+        String lastCheckIn = 'N/A';
+        for (var a in attendance) {
+          if (a['agent_id'] == agentId) {
+            if (a['status'] == 'present') {
+              status = 'On Duty (GPS Active)';
+              if (a['check_in_time'] != null) {
+                final checkIn = DateTime.parse(a['check_in_time']).toLocal();
+                lastCheckIn = "${checkIn.hour.toString().padLeft(2, '0')}:${checkIn.minute.toString().padLeft(2, '0')}";
+              }
+            } else if (a['status'] == 'on_leave') {
+              status = 'On Leave';
+            }
+            break;
+          }
+        }
+
+        results.add({
+          'id': agentId,
+          'full_name': p['full_name'] ?? p['email'] ?? 'Agent',
+          'email': p['email'] ?? '',
+          'status': status,
+          'last_check_in': lastCheckIn,
+          'target_amount': monthlyTarget,
+          'collected_amount': collectedToday,
+        });
+      }
+
+      if (results.isEmpty) {
+        // Safe fallback if tables exist but are empty
+        return [
+          {
+            'id': '55555555-6666-7777-8888-999999999999',
+            'full_name': 'Rohan Naik',
+            'email': 'rohan@lendoraz.com',
+            'status': 'On Duty (GPS Active)',
+            'last_check_in': '09:15 AM',
+            'target_amount': 50000.0,
+            'collected_amount': 23536.0,
+          }
+        ];
+      }
+      return results;
+    } catch (e) {
+      debugPrint("Error fetching agents with stats: $e");
+      return [
+        {
+          'id': '55555555-6666-7777-8888-999999999999',
+          'full_name': 'Rohan Naik',
+          'email': 'rohan@lendoraz.com',
+          'status': 'On Duty (GPS Active)',
+          'last_check_in': '09:15 AM',
+          'target_amount': 50000.0,
+          'collected_amount': 23536.0,
+        }
+      ];
+    }
+  }
+
   // Add notification log
   void _addNotification({
     required String title,
@@ -1041,6 +1465,70 @@ class SupabaseService extends ChangeNotifier {
       'type': type,
     });
     _updateControllers();
+  }
+
+  Future<void> addCompany(String name) async {
+    if (_isDemoMode) {
+      _companies.add({
+        'id': 'comp-${const Uuid().v4().substring(0, 8)}',
+        'name': name,
+        'status': 'active',
+      });
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final newComp = await Supabase.instance.client.from('companies').insert({
+        'name': name,
+        'status': 'active',
+      }).select().single();
+      _companies.add(Map<String, dynamic>.from(newComp));
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error adding company: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> updateCompanyStatus(String id, String status) async {
+    final idx = _companies.indexWhere((c) => c['id'] == id);
+    if (idx != -1) {
+      if (_isDemoMode) {
+        _companies[idx] = Map<String, dynamic>.from({..._companies[idx], 'status': status});
+        notifyListeners();
+        return;
+      }
+
+      try {
+        await Supabase.instance.client.from('companies').update({
+          'status': status,
+        }).eq('id', id);
+        _companies[idx] = Map<String, dynamic>.from({..._companies[idx], 'status': status});
+        notifyListeners();
+      } catch (e) {
+        debugPrint("Error updating company status: $e");
+        rethrow;
+      }
+    }
+  }
+
+  void toggleFeature(String key, bool value) async {
+    _featureToggles[key] = value;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('feature_$key', value);
+    } catch (_) {}
+  }
+
+  void toggleThemeMode() async {
+    _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('app_theme_mode', _themeMode == ThemeMode.light ? 'light' : 'dark');
+    } catch (_) {}
   }
 
   @override

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/network/providers.dart';
@@ -24,7 +23,6 @@ class _CollectionDashboardWidgetState extends ConsumerState<CollectionDashboardW
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // Filtered lists
-    final customers = service.getCustomers();
     final loans = service.getLoans();
     final collections = service.getCollections();
 
@@ -245,7 +243,6 @@ class _CollectionDashboardWidgetState extends ConsumerState<CollectionDashboardW
     SupabaseService service,
   ) {
     final penalties = service.calculatePenalty(loan['id']);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final totalDue = (loan['monthly_installment'] as double) + penalties['total_penalty']!;
 
     showModalBottomSheet(

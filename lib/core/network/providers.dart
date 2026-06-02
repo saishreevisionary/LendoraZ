@@ -52,3 +52,10 @@ final notificationsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final service = ref.watch(supabaseServiceProvider);
   return service.notificationsStream;
 });
+
+// Dynamic Permission checking provider
+final hasPermissionProvider = Provider.family<bool, String>((ref, permissionCode) {
+  ref.watch(supabaseRefreshProvider);
+  final service = ref.read(supabaseServiceProvider);
+  return service.hasPermission(permissionCode);
+});
