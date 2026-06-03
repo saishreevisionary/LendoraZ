@@ -82,6 +82,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
           subtitle: 'Active accounts',
           icon: Icons.people_alt,
           color: AppTheme.primaryBlue,
+          delay: 0,
         ),
         KpiCard(
           title: 'Active Loans',
@@ -89,6 +90,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
           subtitle: 'In collection',
           icon: Icons.account_balance,
           color: AppTheme.primaryCyan,
+          delay: 100,
         ),
         KpiCard(
           title: 'Lending Portfolio',
@@ -96,6 +98,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
           subtitle: 'Capital deployed',
           icon: Icons.monetization_on,
           color: AppTheme.neonGreen,
+          delay: 200,
         ),
         KpiCard(
           title: 'Net Profit Margin',
@@ -103,6 +106,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
           subtitle: 'Industry Avg: 12%',
           icon: Icons.trending_up,
           color: AppTheme.goldPremium,
+          delay: 300,
         ),
       ],
     );
@@ -113,6 +117,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
       title: 'Predictive Cashflow Forecast',
       action: const Icon(Icons.auto_awesome, color: AppTheme.primaryCyan, size: 18),
       padding: const EdgeInsets.all(20),
+      delay: 400,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -185,6 +190,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
     return DashboardSectionCard(
       title: 'Collection Agent Performance',
       padding: const EdgeInsets.all(20),
+      delay: 500,
       child: FutureBuilder<List<Map<String, dynamic>>>(
         future: service.getAgentsWithStats(),
         builder: (context, snapshot) {
@@ -259,6 +265,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
     return DashboardSectionCard(
       title: 'Company Configurations',
       padding: const EdgeInsets.all(20),
+      delay: 600,
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
