@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/network/providers.dart';
@@ -30,50 +31,131 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerProviderStateMixin {
   int _selectedBottomNavIndex = 0;
 
   // Quick action states
   final _voiceInputTextController = TextEditingController();
   bool _isListeningVoice = false;
 
+  late AnimationController _driftController;
+  late Animation<double> _driftAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _driftController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 15),
+    )..repeat(reverse: true);
+    _driftAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _driftController, curve: Curves.easeInOutSine),
+    );
+  }
+
+  @override
+  void dispose() {
+    _driftController.dispose();
+    _voiceInputTextController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = ref.watch(supabaseServiceProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: isDark
-            ? const LinearGradient(
-                colors: [
-                  Color(0xFF090D16),
-                  Color(0xFF0F172A),
-                  Color(0xFF1E1B4B),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-            : const LinearGradient(
-                colors: [
-                  Color(0xFFEEF2FF), // Soft light indigo
-                  Color(0xFFF5F3FF), // Soft light violet
-                  Color(0xFFFDF2F8), // Soft light peach/pink
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+    return Scaffold(
+      appBar: _buildPremiumAppBar(context, service),
+      drawer: _buildRoleDrawer(context, service),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: service.themeMode == ThemeMode.dark
+              ? const LinearGradient(
+                  colors: [
+                    Color(0xFF090D16), // Very deep indigo/black
+                    Color(0xFF0F172A), // Slate 900
+                    Color(0xFF020617), // Slate 955
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : const LinearGradient(
+                  colors: [
+                    Color(0xFFEEF2FF), // Soft light indigo
+                    Color(0xFFF5F3FF), // Soft light violet
+                    Color(0xFFFDF2F8), // Soft light pink/peach
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+        ),
+        child: Stack(
+          children: [
+            // Ambient drifting glows
+            AnimatedBuilder(
+              animation: _driftAnimation,
+              builder: (context, child) {
+                final isDark = service.themeMode == ThemeMode.dark;
+                return Stack(
+                  children: [
+                    Positioned(
+                      top: -50 + (30 * _driftAnimation.value),
+                      right: -80 - (20 * _driftAnimation.value),
+                      child: Container(
+                        width: 320,
+                        height: 320,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isDark 
+                              ? AppTheme.primaryBlue.withValues(alpha: 0.08)
+                              : AppTheme.primaryBlue.withValues(alpha: 0.06),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isDark
+                                  ? AppTheme.primaryBlue.withValues(alpha: 0.1)
+                                  : AppTheme.primaryBlue.withValues(alpha: 0.08),
+                              blurRadius: 120,
+                              spreadRadius: 20,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: -80 - (30 * _driftAnimation.value),
+                      left: -80 + (20 * _driftAnimation.value),
+                      child: Container(
+                        width: 350,
+                        height: 350,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isDark
+                              ? AppTheme.primaryCyan.withValues(alpha: 0.06)
+                              : AppTheme.primaryCyan.withValues(alpha: 0.05),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isDark
+                                  ? AppTheme.primaryCyan.withValues(alpha: 0.08)
+                                  : AppTheme.primaryCyan.withValues(alpha: 0.07),
+                              blurRadius: 130,
+                              spreadRadius: 30,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            SafeArea(child: _buildSelectedTabBody(service)),
+          ],
+        ),
       ),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: _buildPremiumAppBar(context, service),
-        drawer: _buildRoleDrawer(context, service),
-        body: _buildSelectedTabBody(service),
-        bottomNavigationBar: _buildBottomNavigationBar(context, service),
-        floatingActionButton: _shouldShowQuickActionsFab(service) 
-            ? _buildQuickActionsFab(context, service) 
-            : null,
-      ),
+      bottomNavigationBar: _buildBottomNavigationBar(context, service),
+      floatingActionButton: _shouldShowQuickActionsFab(service) 
+          ? _buildQuickActionsFab(context, service) 
+          : null,
     );
   }
 
@@ -81,79 +163,94 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // Premium Layout Builders
   // ==========================================
   PreferredSizeWidget _buildPremiumAppBar(BuildContext context, SupabaseService service) {
+    final isDark = service.themeMode == ThemeMode.dark;
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
+      flexibleSpace: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            color: isDark 
+                ? const Color(0xFF090D16).withValues(alpha: 0.4) 
+                : Colors.white.withValues(alpha: 0.4),
+          ),
+        ),
+      ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'LendoraZ',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            style: GoogleFonts.plusJakartaSans(
               fontWeight: FontWeight.w900,
-              letterSpacing: 1.0,
+              fontSize: 22,
+              letterSpacing: -0.5,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
             ),
           ),
           Text(
             'Role: ${service.currentRole.displayName}',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            style: GoogleFonts.plusJakartaSans(
               fontSize: 10,
+              fontWeight: FontWeight.w700,
               color: AppTheme.primaryBlue,
             ),
           ),
         ],
       ),
       actions: [
-        // Offline / Online / Demo Mode Switcher with Indicator
-        Tooltip(
-          message: service.isDemoMode 
-              ? 'Demo Mode (Supabase disconnected)' 
-              : (service.isOffline ? 'Offline Mode (Local Sync Queue Active)' : 'Online Mode (Connected to Supabase)'),
+        // Offline / Online / Demo Mode Switcher with Indicator Badge
+        Container(
+          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: service.isDemoMode
+                ? const Color(0xFFFFB800).withValues(alpha: 0.08)
+                : (service.isOffline
+                    ? const Color(0xFFEF4444).withValues(alpha: 0.08)
+                    : const Color(0xFF10B981).withValues(alpha: 0.08)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: service.isDemoMode
+                  ? const Color(0xFFFFB800).withValues(alpha: 0.25)
+                  : (service.isOffline
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.25)
+                      : const Color(0xFF10B981).withValues(alpha: 0.25)),
+              width: 1,
+            ),
+          ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: service.isDemoMode 
-                      ? AppTheme.warningOrange 
-                      : (service.isOffline ? AppTheme.warningOrange : AppTheme.neonGreen),
-                  boxShadow: [
-                    BoxShadow(
-                      color: (service.isDemoMode 
-                              ? AppTheme.warningOrange 
-                              : (service.isOffline ? AppTheme.warningOrange : AppTheme.neonGreen))
-                          .withValues(alpha: 0.5),
-                      blurRadius: 6,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
+              _PulseDot(isDemo: service.isDemoMode, isOffline: service.isOffline),
+              const SizedBox(width: 6),
               Text(
                 service.isDemoMode 
                     ? 'DEMO' 
                     : (service.isOffline ? 'OFFLINE' : 'ONLINE'),
-                style: TextStyle(
+                style: GoogleFonts.plusJakartaSans(
                   fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: service.isDemoMode 
-                      ? AppTheme.warningOrange 
-                      : (service.isOffline ? AppTheme.warningOrange : AppTheme.neonGreen),
+                  fontWeight: FontWeight.w900,
+                  color: service.isDemoMode
+                      ? const Color(0xFFD97706)
+                      : (service.isOffline ? const Color(0xFFEF4444) : const Color(0xFF10B981)),
                 ),
               ),
               if (!service.isDemoMode) ...[
-                Switch(
-                  value: !service.isOffline,
-                  onChanged: (_) => service.toggleNetworkMode(),
-                  activeThumbColor: AppTheme.neonGreen,
-                  inactiveThumbColor: AppTheme.warningOrange,
-                  inactiveTrackColor: AppTheme.warningOrange.withValues(alpha: 0.2),
+                const SizedBox(width: 4),
+                SizedBox(
+                  height: 18,
+                  width: 28,
+                  child: Switch(
+                    value: !service.isOffline,
+                    onChanged: (_) => service.toggleNetworkMode(),
+                    activeColor: const Color(0xFF10B981),
+                    inactiveThumbColor: const Color(0xFFEF4444),
+                    inactiveTrackColor: const Color(0xFFEF4444).withValues(alpha: 0.2),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                 ),
-              ] else ...[
-                const SizedBox(width: 12),
               ],
             ],
           ),
@@ -167,19 +264,43 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
             onPressed: () => service.syncOfflineQueue(),
           ),
+        // Theme Switcher Button
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+          ),
+          child: IconButton(
+            tooltip: 'Toggle Theme Mode',
+            icon: Icon(
+              isDark ? Icons.light_mode : Icons.dark_mode,
+              color: isDark ? Colors.yellow.shade700 : const Color(0xFF475569),
+              size: 18,
+            ),
+            onPressed: () => service.toggleThemeMode(),
+          ),
+        ),
         // Logout Button
-        IconButton(
-          tooltip: 'Log Out',
-          icon: const Icon(Icons.logout, color: Colors.grey, size: 20),
-          onPressed: () async {
-            await service.signOut();
-            if (context.mounted) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
-            }
-          },
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+          ),
+          child: IconButton(
+            tooltip: 'Log Out',
+            icon: Icon(Icons.logout, color: isDark ? Colors.white70 : const Color(0xFF475569), size: 18),
+            onPressed: () async {
+              await service.signOut();
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                );
+              }
+            },
+          ),
         ),
         const SizedBox(width: 8),
       ],
@@ -239,10 +360,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                     ),
                     trailing: isSelected ? const Icon(Icons.check_circle, color: AppTheme.primaryBlue) : null,
-                    onTap: () async {
-                      Navigator.pop(context);
-                      await Future.delayed(const Duration(milliseconds: 250));
+                    onTap: () {
                       service.switchRole(role);
+                      Navigator.pop(context);
                       setState(() => _selectedBottomNavIndex = 0);
                     },
                   );
@@ -370,7 +490,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         switch (index) {
           case 0: return const AccountantDashboard();
           case 1: return const CollectionDashboardWidget();
-          case 2: return const Center(child: Text('Receipts Manager Panel', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)));
+          case 2: return const Center(child: Text('Receipts Manager Panel', style: TextStyle(color: Colors.white)));
           case 3: return const ReportsWidget();
           default: return const AccountantDashboard();
         }
@@ -378,7 +498,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         switch (index) {
           case 0: return const CustomerDashboard();
           case 1: return const CustomerPortalWidget();
-          case 2: return const Center(child: Text('Download Receipts Panel', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)));
+          case 2: return const Center(child: Text('Download Receipts Panel', style: TextStyle(color: Colors.white)));
           default: return const CustomerDashboard();
         }
     }
@@ -392,37 +512,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       });
     }
 
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF090D16).withValues(alpha: 0.75)
-                : Colors.white.withValues(alpha: 0.75),
-            border: Border(
-              top: BorderSide(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : const Color(0xFF3B82F6).withValues(alpha: 0.08),
-                width: 1.2,
-              ),
-            ),
-          ),
-          child: NavigationBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            selectedIndex: _selectedBottomNavIndex >= destinations.length ? 0 : _selectedBottomNavIndex,
-            onDestinationSelected: (idx) => setState(() => _selectedBottomNavIndex = idx),
-            destinations: destinations,
+    final isDark = service.themeMode == ThemeMode.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark 
+            ? const Color(0xFF0F172A).withValues(alpha: 0.8)
+            : Colors.white.withValues(alpha: 0.85),
+        border: Border(
+          top: BorderSide(
+            color: isDark 
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.06),
+            width: 1.2,
           ),
         ),
+      ),
+      child: NavigationBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        selectedIndex: _selectedBottomNavIndex >= destinations.length ? 0 : _selectedBottomNavIndex,
+        onDestinationSelected: (idx) => setState(() => _selectedBottomNavIndex = idx),
+        destinations: destinations,
       ),
     );
   }
 
   Widget _buildNotificationFeed(SupabaseService service) {
     final alerts = service.getAlerts().where((a) => a['status'] == 'active').toList();
+    final isDark = service.themeMode == ThemeMode.dark;
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: alerts.length,
@@ -430,21 +548,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         final a = alerts[idx];
         final customer = service.getCustomerById(a['customer_id']);
         return Card(
-          color: Colors.white,
-          elevation: 2,
+          color: isDark ? AppTheme.darkCard : Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: AppTheme.lightBorder),
+            side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
           ),
           child: ListTile(
             leading: const Icon(Icons.warning, color: AppTheme.dangerRed),
             title: Text(
-              customer?['full_name'] ?? 'Risk Alert', 
-              style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)
+              customer?['full_name'] ?? 'Risk Alert',
+              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold),
             ),
             subtitle: Text(
               'Missed Dues Count: ${a['missed_dues_count']}',
-              style: const TextStyle(color: Color(0xFF64748B)),
+              style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B)),
             ),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -583,6 +700,63 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           },
         );
       },
+    );
+  }
+}
+
+class _PulseDot extends StatefulWidget {
+  final bool isDemo;
+  final bool isOffline;
+  const _PulseDot({required this.isDemo, required this.isOffline});
+
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.isDemo 
+        ? const Color(0xFFD97706) 
+        : (widget.isOffline ? const Color(0xFFEF4444) : const Color(0xFF10B981));
+    return FadeTransition(
+      opacity: _animation,
+      child: Container(
+        width: 7,
+        height: 7,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.6),
+              blurRadius: 4,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

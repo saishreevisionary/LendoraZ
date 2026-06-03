@@ -245,6 +245,48 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS public.reminders (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+  template_type TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  scheduled_for TIMESTAMP WITH TIME ZONE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  sent_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.emergency_alerts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
+  loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+  missed_dues_count INT NOT NULL DEFAULT 0,
+  triggered_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.agent_targets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  agent_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+  target_amount NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+  target_month DATE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.agent_attendance (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  agent_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+  attendance_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'absent' CHECK (status IN ('present', 'absent', 'on_leave')),
+  check_in_time TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ==========================================
 -- 6. Helper Functions for RLS
 -- ==========================================
@@ -308,6 +350,10 @@ ALTER TABLE public.crm_leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reminders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.emergency_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_targets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_attendance ENABLE ROW LEVEL SECURITY;
 
 -- Dynamic Policies
 
@@ -321,44 +367,70 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 
 -- 1. COMPANIES
+DROP POLICY IF EXISTS "Super Admins manage all companies" ON public.companies;
 CREATE POLICY "Super Admins manage all companies" ON public.companies
   FOR ALL USING (public.is_super_admin());
 
+DROP POLICY IF EXISTS "Users view own company" ON public.companies;
 CREATE POLICY "Users view own company" ON public.companies
   FOR SELECT USING (id = public.get_user_company_id());
 
 
 -- 2. USERS
+DROP POLICY IF EXISTS "Super Admins manage all users" ON public.users;
 CREATE POLICY "Super Admins manage all users" ON public.users
   FOR ALL USING (public.is_super_admin());
 
+DROP POLICY IF EXISTS "Users view company-wide users" ON public.users;
 CREATE POLICY "Users view company-wide users" ON public.users
   FOR SELECT USING (company_id = public.get_user_company_id());
 
+DROP POLICY IF EXISTS "Users update own profile" ON public.users;
 CREATE POLICY "Users update own profile" ON public.users
   FOR UPDATE USING (id = auth.uid());
 
+DROP POLICY IF EXISTS "Allow public profiles inserts during signup" ON public.users;
+CREATE POLICY "Allow public profiles inserts during signup" ON public.users
+  FOR INSERT WITH CHECK (true);
+
 
 -- 3. RBAC METADATA
+DROP POLICY IF EXISTS "Read permissions allowed for all" ON public.permissions;
 CREATE POLICY "Read permissions allowed for all" ON public.permissions FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Read roles allowed for all" ON public.roles;
 CREATE POLICY "Read roles allowed for all" ON public.roles FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Read role_permissions allowed for all" ON public.role_permissions;
 CREATE POLICY "Read role_permissions allowed for all" ON public.role_permissions FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Read user_roles allowed for all" ON public.user_roles;
 CREATE POLICY "Read user_roles allowed for all" ON public.user_roles FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Super admin manages roles and permissions" ON public.roles;
 CREATE POLICY "Super admin manages roles and permissions" ON public.roles FOR ALL USING (public.is_super_admin());
+
+DROP POLICY IF EXISTS "Super admin manages permissions config" ON public.permissions;
 CREATE POLICY "Super admin manages permissions config" ON public.permissions FOR ALL USING (public.is_super_admin());
+
+DROP POLICY IF EXISTS "Super admin maps role permissions" ON public.role_permissions;
 CREATE POLICY "Super admin maps role permissions" ON public.role_permissions FOR ALL USING (public.is_super_admin());
+
+DROP POLICY IF EXISTS "Company Owner / Super Admin manage user roles" ON public.user_roles;
 CREATE POLICY "Company Owner / Super Admin manage user roles" ON public.user_roles
   FOR ALL USING (public.is_super_admin() OR public.get_user_role() = 'company_owner');
 
 
 -- 4. CUSTOMERS
+DROP POLICY IF EXISTS "Customers view self" ON public.customers;
 CREATE POLICY "Customers view self" ON public.customers
   FOR SELECT USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Agents view assigned customers" ON public.customers;
 CREATE POLICY "Agents view assigned customers" ON public.customers
   FOR SELECT USING (company_id = public.get_user_company_id() AND (assigned_agent_id = auth.uid() OR public.get_user_role() IN ('company_owner', 'manager', 'accountant')));
 
+DROP POLICY IF EXISTS "Staff manages customers" ON public.customers;
 CREATE POLICY "Staff manages customers" ON public.customers
   FOR ALL USING (
     public.is_super_admin() OR 
@@ -367,11 +439,13 @@ CREATE POLICY "Staff manages customers" ON public.customers
 
 
 -- 5. LOANS
+DROP POLICY IF EXISTS "Customers view own loans" ON public.loans;
 CREATE POLICY "Customers view own loans" ON public.loans
   FOR SELECT USING (
     customer_id IN (SELECT id FROM public.customers WHERE user_id = auth.uid())
   );
 
+DROP POLICY IF EXISTS "Agents view assigned loans" ON public.loans;
 CREATE POLICY "Agents view assigned loans" ON public.loans
   FOR SELECT USING (
     company_id = public.get_user_company_id() AND 
@@ -379,6 +453,7 @@ CREATE POLICY "Agents view assigned loans" ON public.loans
      OR public.get_user_role() IN ('company_owner', 'manager', 'accountant'))
   );
 
+DROP POLICY IF EXISTS "Owners and managers manage loans" ON public.loans;
 CREATE POLICY "Owners and managers manage loans" ON public.loans
   FOR ALL USING (
     public.is_super_admin() OR 
@@ -387,28 +462,34 @@ CREATE POLICY "Owners and managers manage loans" ON public.loans
 
 
 -- 6. COLLECTIONS
+DROP POLICY IF EXISTS "Agents insert and view own collections" ON public.collections;
 CREATE POLICY "Agents insert and view own collections" ON public.collections
   FOR ALL USING (
     company_id = public.get_user_company_id() AND 
     (agent_id = auth.uid() OR public.get_user_role() IN ('company_owner', 'manager', 'accountant'))
   );
 
+DROP POLICY IF EXISTS "Super Admin manage collections" ON public.collections;
 CREATE POLICY "Super Admin manage collections" ON public.collections FOR ALL USING (public.is_super_admin());
 
 
 -- 7. PAYMENTS & RECEIPTS
+DROP POLICY IF EXISTS "Customers view own payments" ON public.payments;
 CREATE POLICY "Customers view own payments" ON public.payments
   FOR SELECT USING (customer_id IN (SELECT id FROM public.customers WHERE user_id = auth.uid()));
 
+DROP POLICY IF EXISTS "Staff view company payments" ON public.payments;
 CREATE POLICY "Staff view company payments" ON public.payments
   FOR ALL USING (
     public.is_super_admin() OR 
     (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
   );
 
+DROP POLICY IF EXISTS "Customers view own receipts" ON public.receipts;
 CREATE POLICY "Customers view own receipts" ON public.receipts
   FOR SELECT USING (payment_id IN (SELECT id FROM public.payments WHERE customer_id IN (SELECT id FROM public.customers WHERE user_id = auth.uid())));
 
+DROP POLICY IF EXISTS "Staff view company receipts" ON public.receipts;
 CREATE POLICY "Staff view company receipts" ON public.receipts
   FOR ALL USING (
     public.is_super_admin() OR 
@@ -416,7 +497,8 @@ CREATE POLICY "Staff view company receipts" ON public.receipts
   );
 
 
--- 8. DOCUMENTS, GOLD LOANS, CHIT GROUPS, CRM LEADS, NOTIFICATIONS, AUDIT LOGS
+-- 8. DOCUMENTS, GOLD LOANS, CHIT GROUPS, CRM LEADS, NOTIFICATIONS, AUDIT LOGS, REMINDERS, ALERTS, TARGETS & ATTENDANCE
+DROP POLICY IF EXISTS "Documents policy" ON public.documents;
 CREATE POLICY "Documents policy" ON public.documents
   FOR ALL USING (
     public.is_super_admin() OR
@@ -427,44 +509,76 @@ CREATE POLICY "Documents policy" ON public.documents
     ))
   );
 
+DROP POLICY IF EXISTS "Gold Loans policy" ON public.gold_loans;
 CREATE POLICY "Gold Loans policy" ON public.gold_loans
   FOR ALL USING (
     public.is_super_admin() OR
     (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
   );
 
+DROP POLICY IF EXISTS "Chit Groups policy" ON public.chit_groups;
 CREATE POLICY "Chit Groups policy" ON public.chit_groups
   FOR ALL USING (
     public.is_super_admin() OR
     (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
   );
 
+DROP POLICY IF EXISTS "CRM Leads policy" ON public.crm_leads;
 CREATE POLICY "CRM Leads policy" ON public.crm_leads
   FOR ALL USING (
     public.is_super_admin() OR
     (company_id = public.get_user_company_id() AND (
       public.get_user_role() IN ('company_owner', 'manager') OR
-      (public.get_user_role() = 'collection_agent') -- Allowed full access for leads
+      (public.get_user_role() = 'collection_agent')
     ))
   );
 
+DROP POLICY IF EXISTS "Notifications owner policy" ON public.notifications;
 CREATE POLICY "Notifications owner policy" ON public.notifications
   FOR ALL USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Audit Logs policy" ON public.audit_logs;
 CREATE POLICY "Audit Logs policy" ON public.audit_logs
   FOR SELECT USING (
     public.is_super_admin() OR 
     (company_id = public.get_user_company_id() AND public.get_user_role() = 'company_owner')
   );
 
+DROP POLICY IF EXISTS "Super Admins manage system settings" ON public.system_settings;
 CREATE POLICY "Super Admins manage system settings" ON public.system_settings
   FOR ALL USING (public.is_super_admin());
 
+DROP POLICY IF EXISTS "All authenticated users view system settings" ON public.system_settings;
 CREATE POLICY "All authenticated users view system settings" ON public.system_settings
   FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY "Allow public profiles inserts during signup" ON public.users
-  FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Staff view company reminders" ON public.reminders;
+CREATE POLICY "Staff view company reminders" ON public.reminders
+  FOR ALL USING (
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
+  );
+
+DROP POLICY IF EXISTS "Staff view company emergency alerts" ON public.emergency_alerts;
+CREATE POLICY "Staff view company emergency alerts" ON public.emergency_alerts
+  FOR ALL USING (
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
+  );
+
+DROP POLICY IF EXISTS "Staff view agent targets" ON public.agent_targets;
+CREATE POLICY "Staff view agent targets" ON public.agent_targets
+  FOR ALL USING (
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
+  );
+
+DROP POLICY IF EXISTS "Staff view agent attendance" ON public.agent_attendance;
+CREATE POLICY "Staff view agent attendance" ON public.agent_attendance
+  FOR ALL USING (
+    public.is_super_admin() OR 
+    (company_id = public.get_user_company_id() AND public.get_user_role() IN ('company_owner', 'manager', 'accountant', 'collection_agent'))
+  );
 
 -- ==========================================
 -- 8. Automatically Map Profiles Trigger
@@ -552,6 +666,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.crm_leads TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.audit_logs TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.system_settings TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.reminders TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.emergency_alerts TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.agent_targets TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.agent_attendance TO authenticated;
 
 -- Grant selective read-only table access to anonymous users (non-logged-in sessions)
 GRANT SELECT ON public.permissions TO anon;

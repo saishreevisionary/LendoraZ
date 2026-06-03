@@ -3,9 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/theme/animations.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/network/providers.dart';
+import '../../../core/widgets/kpi_card.dart';
+import '../../../core/widgets/dashboard_section.dart';
 
 class CompanyOwnerDashboard extends ConsumerWidget {
   const CompanyOwnerDashboard({super.key});
@@ -49,23 +50,17 @@ class CompanyOwnerDashboard extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SlideFadeIn(
-          delay: 0,
-          child: Text(
-            'Executive Workspace',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-              color: isDark ? Colors.white : const Color(0xFF0F172A),
-            ),
+        Text(
+          'Executive Workspace',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
-        SlideFadeIn(
-          delay: 50,
-          child: Text(
-            'Strategic growth, AI risk profiling, and team analytics.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: isDark ? Colors.grey : const Color(0xFF475569),
-            ),
+        Text(
+          'Strategic growth, AI risk profiling, and team analytics.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: isDark ? Colors.grey : const Color(0xFF64748B),
           ),
         ),
       ],
@@ -79,109 +74,95 @@ class CompanyOwnerDashboard extends ConsumerWidget {
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
-      childAspectRatio: 1.4,
+      childAspectRatio: MediaQuery.of(context).size.width > 600 ? 1.4 : 1.15,
       children: [
-        SlideFadeIn(
-          delay: 100,
-          child: _buildSAKPICard(
-            context,
-            title: 'Total Customers',
-            value: '$customerCount',
-            subtitle: 'Active accounts',
-            icon: Icons.people_alt,
-            color: AppTheme.primaryBlue,
-          ),
+        KpiCard(
+          title: 'Total Customers',
+          value: '$customerCount',
+          subtitle: 'Active accounts',
+          icon: Icons.people_alt,
+          color: AppTheme.primaryBlue,
         ),
-        SlideFadeIn(
-          delay: 150,
-          child: _buildSAKPICard(
-            context,
-            title: 'Active Loans',
-            value: '$loanCount',
-            subtitle: 'In collection',
-            icon: Icons.account_balance,
-            color: AppTheme.primaryCyan,
-          ),
+        KpiCard(
+          title: 'Active Loans',
+          value: '$loanCount',
+          subtitle: 'In collection',
+          icon: Icons.account_balance,
+          color: AppTheme.primaryCyan,
         ),
-        SlideFadeIn(
-          delay: 200,
-          child: _buildSAKPICard(
-            context,
-            title: 'Lending Portfolio',
-            value: fmt.format(portfolio),
-            subtitle: 'Capital deployed',
-            icon: Icons.monetization_on,
-            color: AppTheme.neonGreen,
-          ),
+        KpiCard(
+          title: 'Lending Portfolio',
+          value: fmt.format(portfolio),
+          subtitle: 'Capital deployed',
+          icon: Icons.monetization_on,
+          color: AppTheme.neonGreen,
         ),
-        SlideFadeIn(
-          delay: 250,
-          child: _buildSAKPICard(
-            context,
-            title: 'Net Profit Margin',
-            value: '18.4%',
-            subtitle: 'Industry Avg: 12%',
-            icon: Icons.trending_up,
-            color: AppTheme.goldPremium,
-          ),
+        KpiCard(
+          title: 'Net Profit Margin',
+          value: '18.4%',
+          subtitle: 'Industry Avg: 12%',
+          icon: Icons.trending_up,
+          color: AppTheme.goldPremium,
         ),
       ],
     );
   }
 
-  Widget _buildSAKPICard(
-    BuildContext context, {
-    required String title,
-    required String value,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GlassCard(
-      padding: const EdgeInsets.all(14),
-      borderOpacity: 0.15,
+  Widget _buildPredictiveCashflow(BuildContext context, Map<String, double> forecast, NumberFormat fmt) {
+    return DashboardSectionCard(
+      title: 'Predictive Cashflow Forecast',
+      action: const Icon(Icons.auto_awesome, color: AppTheme.primaryCyan, size: 18),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  title, 
-                  style: TextStyle(
-                    color: isDark ? Colors.grey[400] : const Color(0xFF64748B), 
-                    fontSize: 11, 
-                    fontWeight: FontWeight.bold
+          SizedBox(
+            height: 150,
+            child: LineChart(
+              LineChartData(
+                gridData: const FlGridData(show: false),
+                titlesData: const FlTitlesData(show: false),
+                borderData: FlBorderData(show: false),
+                minX: 0,
+                maxX: 6,
+                minY: 0,
+                maxY: 50000,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: [
+                      const FlSpot(0, 10000),
+                      const FlSpot(1, 15000),
+                      const FlSpot(2, 13000),
+                      const FlSpot(3, 22000),
+                      FlSpot(4, forecast['tomorrow'] ?? 25000),
+                      FlSpot(5, (forecast['weekly'] ?? 100000) / 4),
+                      FlSpot(6, (forecast['monthly'] ?? 300000) / 10),
+                    ],
+                    isCurved: true,
+                    gradient: const LinearGradient(colors: [AppTheme.primaryBlue, AppTheme.primaryCyan]),
+                    barWidth: 4,
+                    dotData: const FlDotData(show: true),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.primaryBlue.withValues(alpha: 0.2),
+                          AppTheme.primaryCyan.withValues(alpha: 0.02)
+                        ],
+                      ),
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                ],
               ),
-              Icon(icon, color: color, size: 18),
-            ],
+            ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              Text(
-                value, 
-                style: TextStyle(
-                  color: isDark ? Colors.white : const Color(0xFF0F172A), 
-                  fontSize: 20, 
-                  fontWeight: FontWeight.w900
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle, 
-                style: TextStyle(
-                  color: color.withValues(alpha: 0.8), 
-                  fontSize: 9, 
-                  fontWeight: FontWeight.w600
-                ),
-              ),
+              _buildForecastCell('Tomorrow Expected', fmt.format(forecast['tomorrow'] ?? 0)),
+              _buildForecastCell('Weekly Predicted', fmt.format(forecast['weekly'] ?? 0)),
+              _buildForecastCell('Monthly Projected', fmt.format(forecast['monthly'] ?? 0)),
             ],
           ),
         ],
@@ -189,91 +170,10 @@ class CompanyOwnerDashboard extends ConsumerWidget {
     );
   }
 
-  Widget _buildPredictiveCashflow(BuildContext context, Map<String, double> forecast, NumberFormat fmt) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SlideFadeIn(
-      delay: 300,
-      child: GlassCard(
-        padding: const EdgeInsets.all(20),
-        borderOpacity: 0.15,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Predictive Cashflow Forecast', 
-                  style: TextStyle(
-                    color: isDark ? Colors.white : const Color(0xFF0F172A), 
-                    fontWeight: FontWeight.bold, 
-                    fontSize: 16
-                  ),
-                ),
-                const Icon(Icons.auto_awesome, color: AppTheme.primaryCyan, size: 18),
-              ],
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 150,
-              child: LineChart(
-                LineChartData(
-                  gridData: const FlGridData(show: false),
-                  titlesData: const FlTitlesData(show: false),
-                  borderData: FlBorderData(show: false),
-                  minX: 0,
-                  maxX: 6,
-                  minY: 0,
-                  maxY: 50000,
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: [
-                        const FlSpot(0, 10000),
-                        const FlSpot(1, 15000),
-                        const FlSpot(2, 13000),
-                        const FlSpot(3, 22000),
-                        FlSpot(4, forecast['tomorrow'] ?? 25000),
-                        FlSpot(5, (forecast['weekly'] ?? 100000) / 4),
-                        FlSpot(6, (forecast['monthly'] ?? 300000) / 10),
-                      ],
-                      isCurved: true,
-                      gradient: const LinearGradient(colors: [AppTheme.primaryBlue, AppTheme.primaryCyan]),
-                      barWidth: 4,
-                      dotData: const FlDotData(show: true),
-                      belowBarData: BarAreaData(
-                        show: true,
-                        gradient: LinearGradient(
-                          colors: [
-                            AppTheme.primaryBlue.withValues(alpha: 0.2),
-                            AppTheme.primaryCyan.withValues(alpha: 0.02)
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildForecastCell(context, 'Tomorrow Expected', fmt.format(forecast['tomorrow'] ?? 0)),
-                _buildForecastCell(context, 'Weekly Predicted', fmt.format(forecast['weekly'] ?? 0)),
-                _buildForecastCell(context, 'Monthly Projected', fmt.format(forecast['monthly'] ?? 0)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildForecastCell(BuildContext context, String title, String val) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildForecastCell(String title, String val) {
     return Column(
       children: [
-        Text(title, style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 11)),
+        Text(title, style: const TextStyle(color: Colors.grey, fontSize: 11)),
         const SizedBox(height: 4),
         Text(val, style: const TextStyle(color: AppTheme.primaryCyan, fontWeight: FontWeight.bold, fontSize: 14)),
       ],
@@ -282,132 +182,112 @@ class CompanyOwnerDashboard extends ConsumerWidget {
 
   Widget _buildAgentPerformance(BuildContext context, SupabaseService service) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SlideFadeIn(
-      delay: 400,
-      child: GlassCard(
-        padding: const EdgeInsets.all(20),
-        borderOpacity: 0.15,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Collection Agent Performance', 
-              style: TextStyle(
-                color: isDark ? Colors.white : const Color(0xFF0F172A), 
-                fontWeight: FontWeight.bold, 
-                fontSize: 16
+    return DashboardSectionCard(
+      title: 'Collection Agent Performance',
+      padding: const EdgeInsets.all(20),
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: service.getAgentsWithStats(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: CircularProgressIndicator(color: AppTheme.primaryBlue),
               ),
+            );
+          }
+          if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('No agents registered.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ),
+            );
+          }
+          final agents = snapshot.data!;
+          return ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: agents.length,
+            separatorBuilder: (context, index) => Divider(
+              color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
             ),
-            const SizedBox(height: 16),
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: service.getAgentsWithStats(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: CircularProgressIndicator(color: AppTheme.primaryBlue),
-                    ),
-                  );
-                }
-                if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                      child: Text('No agents registered.', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                    ),
-                  );
-                }
-                final agents = snapshot.data!;
-                return ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: agents.length,
-                  separatorBuilder: (context, index) => Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
-                  itemBuilder: (context, idx) {
-                    final agent = agents[idx];
-                    final name = agent['full_name'] ?? 'Agent';
-                    final status = agent['status'] ?? 'Offline';
-                    final target = agent['target_amount'] as double? ?? 50000.0;
-                    final collected = agent['collected_amount'] as double? ?? 0.0;
-                    final double percent = target > 0 ? (collected / target) * 100 : 0.0;
-                    
-                    final badgeColor = percent >= 90 ? AppTheme.neonGreen : (percent >= 50 ? AppTheme.warningOrange : AppTheme.dangerRed);
-  
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(
-                        backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.15),
-                        child: Text(
-                          name.isNotEmpty ? name.substring(0, 2).toUpperCase() : 'AG',
-                          style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      title: Text(name, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold, fontSize: 14)),
-                      subtitle: Text('Status: $status', style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 11)),
-                      trailing: Text('${percent.toStringAsFixed(1)}% Target', style: TextStyle(color: badgeColor, fontSize: 13, fontWeight: FontWeight.bold)),
-                    );
-                  },
-                );
-              },
-            ),
-          ],
-        ),
+            itemBuilder: (context, idx) {
+              final agent = agents[idx];
+              final name = agent['full_name'] ?? 'Agent';
+              final status = agent['status'] ?? 'Offline';
+              final target = agent['target_amount'] as double? ?? 50000.0;
+              final collected = agent['collected_amount'] as double? ?? 0.0;
+              final double percent = target > 0 ? (collected / target) * 100 : 0.0;
+              
+              final badgeColor = percent >= 90 ? AppTheme.neonGreen : (percent >= 50 ? AppTheme.warningOrange : AppTheme.dangerRed);
+
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.15),
+                  child: Text(
+                    name.isNotEmpty ? name.substring(0, 2).toUpperCase() : 'AG',
+                    style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                title: Text(
+                  name,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                subtitle: Text(
+                  'Status: $status',
+                  style: TextStyle(
+                    color: isDark ? Colors.grey : const Color(0xFF64748B),
+                    fontSize: 11,
+                  ),
+                ),
+                trailing: Text('${percent.toStringAsFixed(1)}% Target', style: TextStyle(color: badgeColor, fontSize: 13, fontWeight: FontWeight.bold)),
+              );
+            },
+          );
+        },
       ),
     );
   }
 
   Widget _buildLendingControls(BuildContext context, SupabaseService service) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SlideFadeIn(
-      delay: 500,
-      child: GlassCard(
-        padding: const EdgeInsets.all(20),
-        borderOpacity: 0.15,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Company Configurations', 
-              style: TextStyle(
-                color: isDark ? Colors.white : const Color(0xFF0F172A), 
-                fontWeight: FontWeight.bold, 
-                fontSize: 16
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildConfigChip(
-                  context, 
-                  Icons.percent, 
-                  'Interest Rules', 
-                  () => _showConfigDialog(context, service, 'interest_rate_default', 'Company Interest Rules', 'Default Annual Interest Rate (%)'),
-                ),
-                _buildConfigChip(
-                  context, 
-                  Icons.gavel, 
-                  'Penalty Setup', 
-                  () => _showConfigDialog(context, service, 'penalty_rate_monthly', 'Late Payment Penalty Setup', 'Default Monthly Penalty Rate (%)'),
-                ),
-                _buildConfigChip(
-                  context, 
-                  Icons.settings_suggest, 
-                  'Auto Collection', 
-                  () => _showConfigDialog(context, service, 'sync_interval_seconds', 'Automated Collections Setup', 'Auto-sync Cache Polling Interval (seconds)'),
-                ),
-                _buildConfigChip(
-                  context, 
-                  Icons.security, 
-                  'RLS Status: ACTIVE', 
-                  () => _showRLSInfoDialog(context),
-                ),
-              ],
-            ),
-          ],
-        ),
+    return DashboardSectionCard(
+      title: 'Company Configurations',
+      padding: const EdgeInsets.all(20),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _buildConfigChip(
+            context, 
+            Icons.percent, 
+            'Interest Rules', 
+            () => _showConfigDialog(context, service, 'interest_rate_default', 'Company Interest Rules', 'Default Annual Interest Rate (%)'),
+          ),
+          _buildConfigChip(
+            context, 
+            Icons.gavel, 
+            'Penalty Setup', 
+            () => _showConfigDialog(context, service, 'penalty_rate_monthly', 'Late Payment Penalty Setup', 'Default Monthly Penalty Rate (%)'),
+          ),
+          _buildConfigChip(
+            context, 
+            Icons.settings_suggest, 
+            'Auto Collection', 
+            () => _showConfigDialog(context, service, 'sync_interval_seconds', 'Automated Collections Setup', 'Auto-sync Cache Polling Interval (seconds)'),
+          ),
+          _buildConfigChip(
+            context, 
+            Icons.security, 
+            'RLS Status: ACTIVE', 
+            () => _showRLSInfoDialog(context),
+          ),
+        ],
       ),
     );
   }
@@ -417,17 +297,17 @@ class CompanyOwnerDashboard extends ConsumerWidget {
     return ActionChip(
       avatar: Icon(icon, size: 16, color: AppTheme.primaryCyan),
       label: Text(
-        label, 
+        label,
         style: TextStyle(
-          color: isDark ? Colors.white : const Color(0xFF1E293B), 
+          color: isDark ? Colors.white : const Color(0xFF0F172A),
           fontSize: 12,
-          fontWeight: FontWeight.w600
-        )
+          fontWeight: FontWeight.w600,
+        ),
       ),
-      backgroundColor: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFE2E8F0),
+      backgroundColor: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF1F5F9),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10), 
-        side: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFCBD5E1))
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0)),
       ),
       onPressed: onPressed,
     );
@@ -450,24 +330,31 @@ class CompanyOwnerDashboard extends ConsumerWidget {
 
       if (!context.mounted) return;
 
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+
       showDialog(
         context: context,
         builder: (context) {
-          final isDark = Theme.of(context).brightness == Brightness.dark;
           return AlertDialog(
             backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
             ),
-            title: Text(title, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold)),
+            title: Text(
+              title,
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   setting['description'] ?? 'Configure your company default value.',
-                  style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF475569), fontSize: 12),
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -476,7 +363,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
                   style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A)),
                   decoration: InputDecoration(
                     labelText: label,
-                    labelStyle: TextStyle(color: isDark ? Colors.grey : const Color(0xFF475569)),
+                    labelStyle: const TextStyle(color: Colors.grey),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
@@ -492,7 +379,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF475569))),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue),
@@ -542,26 +429,26 @@ class CompanyOwnerDashboard extends ConsumerWidget {
   }
 
   void _showRLSInfoDialog(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
         return AlertDialog(
           backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
           ),
-          title: Row(
+          title: const Row(
             children: [
-              const Icon(Icons.security, color: AppTheme.neonGreen),
-              const SizedBox(width: 8),
-              Text('Security Enforced', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold)),
+              Icon(Icons.security, color: AppTheme.neonGreen),
+              SizedBox(width: 8),
+              Text('Security Enforced', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           content: Text(
             'Row Level Security (RLS) is ACTIVE. \n\nEvery database transaction is guarded by Postgres tenant isolation policies. It is mathematically impossible for agents, accountants, or managers from other companies to access your files or customer sheets.',
-            style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF475569), fontSize: 13, height: 1.4),
+            style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 13, height: 1.4),
           ),
           actions: [
             TextButton(
