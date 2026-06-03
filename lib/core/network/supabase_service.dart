@@ -55,6 +55,7 @@ class SupabaseService extends ChangeNotifier {
   final List<Map<String, dynamic>> _notifications = [];
   final List<Map<String, dynamic>> _companies = [];
   final List<Map<String, dynamic>> _allUsers = [];
+  final List<Map<String, dynamic>> _systemSettings = [];
   final Map<String, bool> _featureToggles = {
     'ai_analytics': true,
     'whatsapp_gateway': true,
@@ -458,26 +459,38 @@ class SupabaseService extends ChangeNotifier {
       case AppUserRole.superAdmin:
         _currentUserName = 'Amit Varma (Super)';
         _currentUserEmail = 'admin@lendoraz.com';
+        _themeMode = ThemeMode.dark;
+        SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
       case AppUserRole.companyOwner:
         _currentUserName = 'Rajesh Singhal';
         _currentUserEmail = 'owner@lendoraz.com';
+        _themeMode = ThemeMode.light;
+        SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'light'));
         break;
       case AppUserRole.manager:
         _currentUserName = 'Sarah D\'Souza';
         _currentUserEmail = 'manager@lendoraz.com';
+        _themeMode = ThemeMode.dark;
+        SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
       case AppUserRole.collectionAgent:
         _currentUserName = 'Rohan Naik';
         _currentUserEmail = 'agent@lendoraz.com';
+        _themeMode = ThemeMode.dark;
+        SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
       case AppUserRole.accountant:
         _currentUserName = 'Nisha Iyer';
         _currentUserEmail = 'accountant@lendoraz.com';
+        _themeMode = ThemeMode.dark;
+        SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
       case AppUserRole.customer:
         _currentUserName = 'Ravi Kumar';
         _currentUserEmail = 'customer@lendoraz.com';
+        _themeMode = ThemeMode.dark;
+        SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
     }
     notifyListeners();
@@ -492,6 +505,13 @@ class SupabaseService extends ChangeNotifier {
       {'id': '99999999-9999-9999-9999-999999999999', 'name': 'LendoraZ Ltd.', 'status': 'active'},
       {'id': 'comp-2', 'name': 'SSV Microfinance', 'status': 'active'},
       {'id': 'comp-3', 'name': 'Star Capital', 'status': 'suspended'},
+    ]);
+
+    _systemSettings.clear();
+    _systemSettings.addAll([
+      {'key': 'interest_rate_default', 'value': '12.0', 'description': 'Default annual interest rate for new loans'},
+      {'key': 'penalty_rate_monthly', 'value': '2.0', 'description': 'Default monthly penalty rate for overdue loans'},
+      {'key': 'sync_interval_seconds', 'value': '60', 'description': 'Default sync polling interval for offline cache queue'}
     ]);
 
     _allUsers.clear();
@@ -1161,11 +1181,74 @@ class SupabaseService extends ChangeNotifier {
   }
 
   // CRM Leads Pipelines Actions
-  void updateLeadStatus(String leadId, String newStatusStr) {
+  Future<void> addLead({
+    required String fullName,
+    required String phone,
+    required double requestedAmount,
+    required String notes,
+  }) async {
+    final leadItem = {
+      'id': _isDemoMode ? 'lead-${const Uuid().v4().substring(0, 8)}' : const Uuid().v4(),
+      'company_id': '99999999-9999-9999-9999-999999999999',
+      'full_name': fullName,
+      'phone': phone,
+      'requested_amount': requestedAmount,
+      'status': 'new_lead',
+      'notes': notes,
+      'created_at': DateTime.now().toIso8601String(),
+    };
+
+    _leads.insert(0, leadItem);
+
+    if (!_isDemoMode) {
+      try {
+        final companyId = getCompanies().isNotEmpty ? getCompanies().first['id'] : '99999999-9999-9999-9999-999999999999';
+
+        await Supabase.instance.client.from('crm_leads').insert({
+          'id': leadItem['id'],
+          'company_id': companyId,
+          'full_name': fullName,
+          'phone': phone,
+          'requested_amount': requestedAmount,
+          'status': 'new_lead',
+          'notes': notes,
+        });
+
+        await logAuditAction(
+          action: 'CREATE_LEAD',
+          targetId: leadItem['id'].toString(),
+          details: {'full_name': fullName, 'amount': requestedAmount},
+        );
+      } catch (e) {
+        debugPrint("Failed to write CRM Lead to Supabase: $e");
+      }
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> updateLeadStatus(String leadId, String newStatusStr) async {
     final idx = _leads.indexWhere((l) => l['id'] == leadId);
     if (idx != -1) {
       _leads[idx] = Map<String, dynamic>.from({..._leads[idx], 'status': newStatusStr});
       notifyListeners();
+
+      if (!_isDemoMode) {
+        try {
+          await Supabase.instance.client
+              .from('crm_leads')
+              .update({'status': newStatusStr})
+              .eq('id', leadId);
+
+          await logAuditAction(
+            action: 'UPDATE_LEAD_STATUS',
+            targetId: leadId,
+            details: {'new_status': newStatusStr},
+          );
+        } catch (e) {
+          debugPrint("Failed to update lead status in Supabase: $e");
+        }
+      }
     }
   }
 
@@ -1288,11 +1371,14 @@ class SupabaseService extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> getSystemSettings() async {
     if (_isDemoMode) {
-      return [
-        {'key': 'interest_rate_default', 'value': '12.0', 'description': 'Default annual interest rate for new loans'},
-        {'key': 'penalty_rate_monthly', 'value': '2.0', 'description': 'Default monthly penalty rate for overdue loans'},
-        {'key': 'sync_interval_seconds', 'value': '60', 'description': 'Default sync polling interval for offline cache queue'}
-      ];
+      if (_systemSettings.isEmpty) {
+        _systemSettings.addAll([
+          {'key': 'interest_rate_default', 'value': '12.0', 'description': 'Default annual interest rate for new loans'},
+          {'key': 'penalty_rate_monthly', 'value': '2.0', 'description': 'Default monthly penalty rate for overdue loans'},
+          {'key': 'sync_interval_seconds', 'value': '60', 'description': 'Default sync polling interval for offline cache queue'}
+        ]);
+      }
+      return List.from(_systemSettings);
     }
     final response = await Supabase.instance.client
         .from('system_settings')
@@ -1303,11 +1389,18 @@ class SupabaseService extends ChangeNotifier {
 
   Future<void> updateSystemSetting(String key, String value) async {
     if (_isDemoMode) {
+      final idx = _systemSettings.indexWhere((s) => s['key'] == key);
+      if (idx != -1) {
+        _systemSettings[idx] = Map<String, dynamic>.from({..._systemSettings[idx], 'value': value});
+      } else {
+        _systemSettings.add({'key': key, 'value': value, 'description': ''});
+      }
       _addNotification(
         title: 'Settings Saved (Mock)',
         message: '$key updated to $value.',
         type: 'success',
       );
+      notifyListeners();
       return;
     }
 

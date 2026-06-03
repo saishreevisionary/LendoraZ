@@ -83,21 +83,40 @@ class _CollectionDashboardWidgetState extends ConsumerState<CollectionDashboardW
           const SizedBox(height: 12),
 
           // FEATURE 1: Grid list of collection metrics
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 1.4,
-            children: [
-              _buildMetricTile('Due Today', _currencyFormat.format(totalDueToday), Colors.blue),
-              _buildMetricTile('Collected', _currencyFormat.format(totalCollectedToday), AppTheme.neonGreen),
-              _buildMetricTile('Pending Today', _currencyFormat.format(pendingToday), AppTheme.warningOrange),
-              _buildMetricTile('Missed Payments', '$missedCount Accs', AppTheme.dangerRed),
-              _buildMetricTile('Overdue', '$overdueCount Dues', Colors.purple),
-              _buildMetricTile('Collection %', '${colPercentage.toStringAsFixed(1)}%', AppTheme.primaryCyan),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final double width = constraints.maxWidth;
+              int crossAxisCount = 3;
+              double childAspectRatio = 1.4;
+
+              if (width > 900) {
+                crossAxisCount = 6;
+                childAspectRatio = 1.8;
+              } else if (width > 600) {
+                crossAxisCount = 3;
+                childAspectRatio = 2.0;
+              } else {
+                crossAxisCount = 2;
+                childAspectRatio = 2.2;
+              }
+
+              return GridView.count(
+                crossAxisCount: crossAxisCount,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: childAspectRatio,
+                children: [
+                  _buildMetricTile('Due Today', _currencyFormat.format(totalDueToday), Colors.blue),
+                  _buildMetricTile('Collected', _currencyFormat.format(totalCollectedToday), AppTheme.neonGreen),
+                  _buildMetricTile('Pending Today', _currencyFormat.format(pendingToday), AppTheme.warningOrange),
+                  _buildMetricTile('Missed Payments', '$missedCount Accs', AppTheme.dangerRed),
+                  _buildMetricTile('Overdue', '$overdueCount Dues', Colors.purple),
+                  _buildMetricTile('Collection %', '${colPercentage.toStringAsFixed(1)}%', AppTheme.primaryCyan),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 16),
 

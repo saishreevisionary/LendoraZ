@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -167,27 +168,65 @@ class AppTheme {
   static BoxDecoration glassDecoration({
     required BuildContext context,
     double radius = 16.0,
-    double borderOpacity = 0.1,
+    double borderOpacity = 0.08,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return BoxDecoration(
       color: isDark
-          ? const Color(0xFF131B2E).withValues(alpha: 0.7)
-          : Colors.white.withValues(alpha: 0.8),
+          ? const Color(0xFF131B2E).withValues(alpha: 0.55)
+          : Colors.white.withValues(alpha: 0.58),
       borderRadius: BorderRadius.circular(radius),
       border: Border.all(
         color: isDark
             ? Colors.white.withValues(alpha: borderOpacity)
-            : Colors.black.withValues(alpha: borderOpacity),
-        width: 1.5,
+            : Colors.white.withValues(alpha: borderOpacity * 3.8),
+        width: 1.2,
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
-          blurRadius: 20,
+          color: isDark
+              ? Colors.black.withValues(alpha: 0.25)
+              : const Color(0xFF1E1B4B).withValues(alpha: 0.06),
+          blurRadius: 32,
           offset: const Offset(0, 10),
         ),
       ],
+    );
+  }
+}
+
+class GlassCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final double radius;
+  final double borderOpacity;
+  final double blur;
+
+  const GlassCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(16.0),
+    this.radius = 16.0,
+    this.borderOpacity = 0.08,
+    this.blur = 20.0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          padding: padding,
+          decoration: AppTheme.glassDecoration(
+            context: context,
+            radius: radius,
+            borderOpacity: borderOpacity,
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/animations.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/network/providers.dart';
 
@@ -31,19 +32,28 @@ class SuperAdminDashboard extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Platform Overview',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
+        SlideFadeIn(
+          delay: 0,
+          child: Text(
+            'Platform Overview',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
           ),
         ),
-        Text(
-          'Global server administration and tenant configurations.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+        SlideFadeIn(
+          delay: 50,
+          child: Text(
+            'Global server administration and tenant configurations.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.grey : const Color(0xFF475569),
+            ),
+          ),
         ),
       ],
     );
@@ -78,59 +88,66 @@ class SuperAdminDashboard extends ConsumerWidget {
       mainAxisSpacing: 12,
       childAspectRatio: 1.4,
       children: [
-        _buildSAKPICard(
-          title: 'Total Companies',
-          value: totalCompVal,
-          subtitle: 'Active: $activeCompVal',
-          icon: Icons.business,
-          color: AppTheme.primaryBlue,
+        SlideFadeIn(
+          delay: 100,
+          child: _buildSAKPICard(
+            context,
+            title: 'Total Companies',
+            value: totalCompVal,
+            subtitle: 'Active: $activeCompVal',
+            icon: Icons.business,
+            color: AppTheme.primaryBlue,
+          ),
         ),
-        _buildSAKPICard(
-          title: 'Total Users',
-          value: totalUsersVal,
-          subtitle: '+14% this month',
-          icon: Icons.people_alt,
-          color: AppTheme.primaryCyan,
+        SlideFadeIn(
+          delay: 150,
+          child: _buildSAKPICard(
+            context,
+            title: 'Total Users',
+            value: totalUsersVal,
+            subtitle: '+14% this month',
+            icon: Icons.people_alt,
+            color: AppTheme.primaryCyan,
+          ),
         ),
-        _buildSAKPICard(
-          title: 'Monthly Revenue',
-          value: revenueVal,
-          subtitle: 'Target: ₹10L',
-          icon: Icons.monetization_on,
-          color: AppTheme.neonGreen,
+        SlideFadeIn(
+          delay: 200,
+          child: _buildSAKPICard(
+            context,
+            title: 'Monthly Revenue',
+            value: revenueVal,
+            subtitle: 'Target: ₹10L',
+            icon: Icons.monetization_on,
+            color: AppTheme.neonGreen,
+          ),
         ),
-        _buildSAKPICard(
-          title: 'Subscriptions Due',
-          value: subsDueVal,
-          subtitle: 'Suspended/Inactive',
-          icon: Icons.receipt_long,
-          color: AppTheme.warningOrange,
+        SlideFadeIn(
+          delay: 250,
+          child: _buildSAKPICard(
+            context,
+            title: 'Subscriptions Due',
+            value: subsDueVal,
+            subtitle: 'Suspended/Inactive',
+            icon: Icons.receipt_long,
+            color: AppTheme.warningOrange,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildSAKPICard({
+  Widget _buildSAKPICard(
+    BuildContext context, {
     required String title,
     required String value,
     required String subtitle,
     required IconData icon,
     required Color color,
   }) {
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GlassCard(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      borderOpacity: 0.15,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -138,16 +155,37 @@ class SuperAdminDashboard extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
+              Text(
+                title, 
+                style: TextStyle(
+                  color: isDark ? Colors.grey[400] : const Color(0xFF64748B), 
+                  fontSize: 11, 
+                  fontWeight: FontWeight.bold
+                ),
+              ),
               Icon(icon, color: color, size: 18),
             ],
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(value, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+              Text(
+                value, 
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                  fontSize: 22, 
+                  fontWeight: FontWeight.w900
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(subtitle, style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 9)),
+              Text(
+                subtitle, 
+                style: TextStyle(
+                  color: color.withValues(alpha: 0.8), 
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ],
@@ -156,216 +194,264 @@ class SuperAdminDashboard extends ConsumerWidget {
   }
 
   Widget _buildHealthAndStorage(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('System Health & Storage', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(Icons.dns, color: AppTheme.neonGreen, size: 16),
-              const SizedBox(width: 8),
-              const Text('Supabase API Status:', style: TextStyle(color: Colors.grey, fontSize: 13)),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: AppTheme.neonGreen.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-                child: const Text('HEALTHY (99.9% Uptime)', style: TextStyle(color: AppTheme.neonGreen, fontSize: 10, fontWeight: FontWeight.bold)),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SlideFadeIn(
+      delay: 300,
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
+        borderOpacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'System Health & Storage', 
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                fontWeight: FontWeight.bold, 
+                fontSize: 16
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text('Global Storage Consumption (185 GB / 500 GB)', style: TextStyle(color: Colors.grey, fontSize: 12)),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: const LinearProgressIndicator(
-              value: 0.37,
-              backgroundColor: Colors.black26,
-              color: AppTheme.primaryBlue,
-              minHeight: 8,
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.dns, color: AppTheme.neonGreen, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  'Supabase API Status:', 
+                  style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 13)
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: AppTheme.neonGreen.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+                  child: const Text('HEALTHY (99.9% Uptime)', style: TextStyle(color: AppTheme.neonGreen, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Global Storage Consumption (185 GB / 500 GB)', 
+              style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 12)
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: 0.37,
+                backgroundColor: isDark ? Colors.black26 : const Color(0xFFE2E8F0),
+                color: AppTheme.primaryBlue,
+                minHeight: 8,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildFeatureToggles(BuildContext context, SupabaseService service) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final toggles = service.featureToggles;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Global Feature Toggles', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 12),
-          _buildToggleRow(
-            'AI Analytics Suite', 
-            'Enable predictive cash flow models platform-wide.', 
-            toggles['ai_analytics'] ?? true,
-            (val) => service.toggleFeature('ai_analytics', val),
-          ),
-          _buildToggleRow(
-            'SMS / WhatsApp Gateway', 
-            'Chargeable API messaging integration.', 
-            toggles['whatsapp_gateway'] ?? true,
-            (val) => service.toggleFeature('whatsapp_gateway', val),
-          ),
-          _buildToggleRow(
-            'Multi-Currency Support', 
-            'Allows non-INR standard currencies.', 
-            toggles['multi_currency'] ?? false,
-            (val) => service.toggleFeature('multi_currency', val),
-          ),
-        ],
+    return SlideFadeIn(
+      delay: 350,
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
+        borderOpacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Global Feature Toggles', 
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                fontWeight: FontWeight.bold, 
+                fontSize: 16
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildToggleRow(
+              context,
+              'AI Analytics Suite', 
+              'Enable predictive cash flow models platform-wide.', 
+              toggles['ai_analytics'] ?? true,
+              (val) => service.toggleFeature('ai_analytics', val),
+            ),
+            _buildToggleRow(
+              context,
+              'SMS / WhatsApp Gateway', 
+              'Chargeable API messaging integration.', 
+              toggles['whatsapp_gateway'] ?? true,
+              (val) => service.toggleFeature('whatsapp_gateway', val),
+            ),
+            _buildToggleRow(
+              context,
+              'Multi-Currency Support', 
+              'Allows non-INR standard currencies.', 
+              toggles['multi_currency'] ?? false,
+              (val) => service.toggleFeature('multi_currency', val),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildToggleRow(String title, String desc, bool val, ValueChanged<bool> onChanged) {
+  Widget _buildToggleRow(BuildContext context, String title, String desc, bool val, ValueChanged<bool> onChanged) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SwitchListTile(
       value: val,
       onChanged: onChanged,
       contentPadding: EdgeInsets.zero,
-      activeColor: AppTheme.primaryCyan,
-      title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-      subtitle: Text(desc, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+      activeThumbColor: AppTheme.primaryCyan,
+      title: Text(
+        title, 
+        style: TextStyle(
+          color: isDark ? Colors.white : const Color(0xFF1E293B), 
+          fontSize: 14, 
+          fontWeight: FontWeight.bold
+        )
+      ),
+      subtitle: Text(desc, style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 11)),
     );
   }
 
   Widget _buildCompaniesPanel(BuildContext context, SupabaseService service) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final companies = service.getCompanies();
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Company Tenants', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              TextButton.icon(
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add Company', style: TextStyle(fontSize: 12)),
-                onPressed: () => _showAddCompanyDialog(context, service),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          companies.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: Text(
-                      'No companies registered. Click Add Company to start.',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
-                    ),
+    return SlideFadeIn(
+      delay: 400,
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
+        borderOpacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Company Tenants', 
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                    fontWeight: FontWeight.bold, 
+                    fontSize: 16
                   ),
-                )
-              : ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: companies.length,
-                  separatorBuilder: (context, index) => const Divider(color: Colors.white12),
-                  itemBuilder: (context, idx) {
-                    final comp = companies[idx];
-                    final name = comp['name'] ?? 'Unknown Company';
-                    final status = comp['status'] ?? 'active';
-                    final isSuspended = status == 'suspended' || status == 'inactive';
-                    final badgeColor = isSuspended ? AppTheme.dangerRed : AppTheme.neonGreen;
-
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(
-                        backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.15),
-                        child: Text(
-                          name.isNotEmpty ? name.substring(0, 2).toUpperCase() : 'CO',
-                          style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
-                        ),
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add Company', style: TextStyle(fontSize: 12)),
+                  onPressed: () => _showAddCompanyDialog(context, service),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            companies.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        'No companies registered. Click Add Company to start.',
+                        style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 13),
                       ),
-                      title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                      subtitle: const Text('Plan: Enterprise (Max 100 Agents)', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          GestureDetector(
-                            onTap: () async {
-                              final newStatus = isSuspended ? 'active' : 'suspended';
-                              try {
-                                await service.updateCompanyStatus(comp['id'], newStatus);
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Failed to update status: $e'),
-                                      backgroundColor: AppTheme.dangerRed,
-                                    ),
-                                  );
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: companies.length,
+                    separatorBuilder: (context, index) => Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                    itemBuilder: (context, idx) {
+                      final comp = companies[idx];
+                      final name = comp['name'] ?? 'Unknown Company';
+                      final status = comp['status'] ?? 'active';
+                      final isSuspended = status == 'suspended' || status == 'inactive';
+                      final badgeColor = isSuspended ? AppTheme.dangerRed : AppTheme.neonGreen;
+
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.15),
+                          child: Text(
+                            name.isNotEmpty ? name.substring(0, 2).toUpperCase() : 'CO',
+                            style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        title: Text(
+                          name, 
+                          style: TextStyle(
+                            color: isDark ? Colors.white : const Color(0xFF1E293B), 
+                            fontWeight: FontWeight.bold, 
+                            fontSize: 14
+                          ),
+                        ),
+                        subtitle: Text(
+                          'Plan: Enterprise (Max 100 Agents)', 
+                          style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 11)
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () async {
+                                final newStatus = isSuspended ? 'active' : 'suspended';
+                                try {
+                                  await service.updateCompanyStatus(comp['id'], newStatus);
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to update status: $e'),
+                                        backgroundColor: AppTheme.dangerRed,
+                                      ),
+                                    );
+                                  }
                                 }
-                              }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: badgeColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
-                              ),
-                              child: Text(
-                                status.toUpperCase(),
-                                style: TextStyle(color: badgeColor, fontSize: 9, fontWeight: FontWeight.bold),
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: badgeColor.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+                                ),
+                                child: Text(
+                                  status.toUpperCase(),
+                                  style: TextStyle(color: badgeColor, fontSize: 9, fontWeight: FontWeight.bold),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          PopupMenuButton<String>(
-                            icon: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
-                            onSelected: (val) async {
-                              try {
-                                await service.updateCompanyStatus(comp['id'], val);
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Failed to update status: $e'),
-                                      backgroundColor: AppTheme.dangerRed,
-                                    ),
-                                  );
+                            const SizedBox(width: 8),
+                            PopupMenuButton<String>(
+                              icon: Icon(Icons.more_vert, color: isDark ? Colors.grey : const Color(0xFF64748B), size: 20),
+                              onSelected: (val) async {
+                                try {
+                                  await service.updateCompanyStatus(comp['id'], val);
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to update status: $e'),
+                                        backgroundColor: AppTheme.dangerRed,
+                                      ),
+                                    );
+                                  }
                                 }
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(value: 'active', child: Text('Activate Tenant')),
-                              const PopupMenuItem(value: 'suspended', child: Text('Suspend Tenant')),
-                              const PopupMenuItem(value: 'inactive', child: Text('Deactivate Tenant')),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ],
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(value: 'active', child: Text('Activate Tenant')),
+                                const PopupMenuItem(value: 'suspended', child: Text('Suspend Tenant')),
+                                const PopupMenuItem(value: 'inactive', child: Text('Deactivate Tenant')),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ],
+        ),
       ),
     );
   }
@@ -375,22 +461,26 @@ class SuperAdminDashboard extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return AlertDialog(
-          backgroundColor: AppTheme.darkCard,
+          backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: AppTheme.darkBorder),
+            side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
           ),
-          title: const Text('Add Company Tenant', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          title: Text(
+            'Add Company Tenant', 
+            style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold)
+          ),
           content: TextField(
             controller: nameController,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A)),
             decoration: InputDecoration(
               labelText: 'Company Name',
-              labelStyle: const TextStyle(color: Colors.grey),
+              labelStyle: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B)),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppTheme.darkBorder),
+                borderSide: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -401,7 +491,7 @@ class SuperAdminDashboard extends ConsumerWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              child: Text('Cancel', style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B))),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue),

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
@@ -39,15 +40,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final service = ref.watch(supabaseServiceProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: _buildPremiumAppBar(context, service),
-      drawer: _buildRoleDrawer(context, service),
-      body: _buildSelectedTabBody(service),
-      bottomNavigationBar: _buildBottomNavigationBar(context, service),
-      floatingActionButton: _shouldShowQuickActionsFab(service) 
-          ? _buildQuickActionsFab(context, service) 
-          : null,
+    return Container(
+      decoration: BoxDecoration(
+        gradient: isDark
+            ? const LinearGradient(
+                colors: [
+                  Color(0xFF090D16),
+                  Color(0xFF0F172A),
+                  Color(0xFF1E1B4B),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : const LinearGradient(
+                colors: [
+                  Color(0xFFEEF2FF), // Soft light indigo
+                  Color(0xFFF5F3FF), // Soft light violet
+                  Color(0xFFFDF2F8), // Soft light peach/pink
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: _buildPremiumAppBar(context, service),
+        drawer: _buildRoleDrawer(context, service),
+        body: _buildSelectedTabBody(service),
+        bottomNavigationBar: _buildBottomNavigationBar(context, service),
+        floatingActionButton: _shouldShowQuickActionsFab(service) 
+            ? _buildQuickActionsFab(context, service) 
+            : null,
+      ),
     );
   }
 
@@ -56,6 +82,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   // ==========================================
   PreferredSizeWidget _buildPremiumAppBar(BuildContext context, SupabaseService service) {
     return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -120,7 +148,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 Switch(
                   value: !service.isOffline,
                   onChanged: (_) => service.toggleNetworkMode(),
-                  activeColor: AppTheme.neonGreen,
+                  activeThumbColor: AppTheme.neonGreen,
                   inactiveThumbColor: AppTheme.warningOrange,
                   inactiveTrackColor: AppTheme.warningOrange.withValues(alpha: 0.2),
                 ),
@@ -139,16 +167,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
             onPressed: () => service.syncOfflineQueue(),
           ),
-        // Theme Switcher Button
-        IconButton(
-          tooltip: 'Toggle Theme Mode',
-          icon: Icon(
-            service.themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
-            color: Colors.grey,
-            size: 20,
-          ),
-          onPressed: () => service.toggleThemeMode(),
-        ),
         // Logout Button
         IconButton(
           tooltip: 'Log Out',
@@ -221,9 +239,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                     ),
                     trailing: isSelected ? const Icon(Icons.check_circle, color: AppTheme.primaryBlue) : null,
-                    onTap: () {
-                      service.switchRole(role);
+                    onTap: () async {
                       Navigator.pop(context);
+                      await Future.delayed(const Duration(milliseconds: 250));
+                      service.switchRole(role);
                       setState(() => _selectedBottomNavIndex = 0);
                     },
                   );
@@ -351,7 +370,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         switch (index) {
           case 0: return const AccountantDashboard();
           case 1: return const CollectionDashboardWidget();
-          case 2: return const Center(child: Text('Receipts Manager Panel', style: TextStyle(color: Colors.white)));
+          case 2: return const Center(child: Text('Receipts Manager Panel', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)));
           case 3: return const ReportsWidget();
           default: return const AccountantDashboard();
         }
@@ -359,7 +378,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         switch (index) {
           case 0: return const CustomerDashboard();
           case 1: return const CustomerPortalWidget();
-          case 2: return const Center(child: Text('Download Receipts Panel', style: TextStyle(color: Colors.white)));
+          case 2: return const Center(child: Text('Download Receipts Panel', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)));
           default: return const CustomerDashboard();
         }
     }
@@ -373,10 +392,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       });
     }
 
-    return NavigationBar(
-      selectedIndex: _selectedBottomNavIndex >= destinations.length ? 0 : _selectedBottomNavIndex,
-      onDestinationSelected: (idx) => setState(() => _selectedBottomNavIndex = idx),
-      destinations: destinations,
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF090D16).withValues(alpha: 0.75)
+                : Colors.white.withValues(alpha: 0.75),
+            border: Border(
+              top: BorderSide(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : const Color(0xFF3B82F6).withValues(alpha: 0.08),
+                width: 1.2,
+              ),
+            ),
+          ),
+          child: NavigationBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            selectedIndex: _selectedBottomNavIndex >= destinations.length ? 0 : _selectedBottomNavIndex,
+            onDestinationSelected: (idx) => setState(() => _selectedBottomNavIndex = idx),
+            destinations: destinations,
+          ),
+        ),
+      ),
     );
   }
 
@@ -389,12 +430,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         final a = alerts[idx];
         final customer = service.getCustomerById(a['customer_id']);
         return Card(
-          color: AppTheme.darkCard,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          color: Colors.white,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.lightBorder),
+          ),
           child: ListTile(
             leading: const Icon(Icons.warning, color: AppTheme.dangerRed),
-            title: Text(customer?['full_name'] ?? 'Risk Alert', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            subtitle: Text('Missed Dues Count: ${a['missed_dues_count']}'),
+            title: Text(
+              customer?['full_name'] ?? 'Risk Alert', 
+              style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)
+            ),
+            subtitle: Text(
+              'Missed Dues Count: ${a['missed_dues_count']}',
+              style: const TextStyle(color: Color(0xFF64748B)),
+            ),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(color: AppTheme.dangerRed.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),

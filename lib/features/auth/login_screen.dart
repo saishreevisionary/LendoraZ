@@ -52,6 +52,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
     );
 
     _animationController.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final service = ref.read(supabaseServiceProvider);
+      _emailController.text = service.currentUserEmail;
+      _passwordController.text = 'password123';
+    });
   }
 
   @override
@@ -436,9 +441,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
         
                                     // Role Selection Dropdown
                                     DropdownButtonFormField<AppUserRole>(
-                                      value: service.currentRole,
+                                      key: ValueKey(service.currentRole),
+                                      initialValue: service.currentRole,
                                       onChanged: _isLoading ? null : (role) {
-                                        if (role != null) service.switchRole(role);
+                                        if (role != null) {
+                                          service.switchRole(role);
+                                          _emailController.text = service.currentUserEmail;
+                                          _passwordController.text = 'password123';
+                                        }
                                       },
                                       icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
                                       dropdownColor: Colors.white,

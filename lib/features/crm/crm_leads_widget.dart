@@ -253,20 +253,19 @@ class _CRMLeadsWidgetState extends ConsumerState<CRMLeadsWidget> {
               },
               child: const Text('Cancel'),
             ),
-            ElevatedButton(
-              onPressed: () {
+             ElevatedButton(
+              onPressed: () async {
                 final amt = double.tryParse(_newLeadAmountController.text) ?? 50000.0;
-                service.getLeads().insert(0, {
-                  'id': 'lead-${DateTime.now().millisecond}',
-                  'full_name': _newLeadNameController.text,
-                  'phone': _newLeadPhoneController.text,
-                  'requested_amount': amt,
-                  'status': 'new_lead',
-                  'notes': 'Manually entered credit lead.',
-                });
+                await service.addLead(
+                  fullName: _newLeadNameController.text.trim(),
+                  phone: _newLeadPhoneController.text.trim(),
+                  requestedAmount: amt,
+                  notes: 'Manually entered credit lead.',
+                );
                 _clearLeadInputs();
-                setState(() {});
-                Navigator.pop(context);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
               },
               child: const Text('Add to Pipeline'),
             ),
@@ -294,10 +293,11 @@ class _CRMLeadsWidgetState extends ConsumerState<CRMLeadsWidget> {
               return ListTile(
                 title: Text(_getStageTitle(st)),
                 trailing: lead['status'] == st ? const Icon(Icons.check, color: AppTheme.primaryBlue) : null,
-                onTap: () {
-                  service.updateLeadStatus(lead['id'], st);
-                  Navigator.pop(context);
-                  setState(() {});
+                onTap: () async {
+                  await service.updateLeadStatus(lead['id'], st);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
                 },
               );
             }).toList(),

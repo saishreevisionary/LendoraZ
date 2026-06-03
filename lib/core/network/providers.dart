@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'supabase_service.dart';
 
 // Service Provider
-final supabaseServiceProvider = Provider<SupabaseService>((ref) {
+final supabaseServiceProvider = ChangeNotifierProvider<SupabaseService>((ref) {
   return SupabaseService();
 });
 

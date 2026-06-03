@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/animations.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/network/providers.dart';
 
@@ -45,194 +46,287 @@ class CustomerDashboard extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context, SupabaseService service) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Customer Portal',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
+        SlideFadeIn(
+          delay: 0,
+          child: Text(
+            'Customer Portal',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
           ),
         ),
-        Text(
-          'Track your loan balances, due schedules, and download billing receipts.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+        SlideFadeIn(
+          delay: 50,
+          child: Text(
+            'Track your loan balances, due schedules, and download billing receipts.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.grey : const Color(0xFF475569),
+            ),
+          ),
         ),
       ],
     );
   }
 
   Widget _buildActiveLoanOverview(BuildContext context, double outstanding, double paid, double progress, NumberFormat fmt) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('My Loan Overview', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Outstanding Balance', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                  const SizedBox(height: 4),
-                  Text(fmt.format(outstanding), style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-                ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SlideFadeIn(
+      delay: 100,
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
+        borderOpacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'My Loan Overview', 
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                fontWeight: FontWeight.bold, 
+                fontSize: 16
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text('Total Paid', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                  const SizedBox(height: 4),
-                  Text(fmt.format(paid), style: const TextStyle(color: AppTheme.neonGreen, fontSize: 18, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Loan Payoff Progress: ${(progress * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: progress,
-              backgroundColor: Colors.black26,
-              color: AppTheme.primaryBlue,
-              minHeight: 8,
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Outstanding Balance', 
+                      style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 11)
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      fmt.format(outstanding), 
+                      style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                        fontSize: 24, 
+                        fontWeight: FontWeight.w900
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Total Paid', 
+                      style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 11)
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      fmt.format(paid), 
+                      style: const TextStyle(color: AppTheme.neonGreen, fontSize: 18, fontWeight: FontWeight.bold)
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Loan Payoff Progress: ${(progress * 100).toStringAsFixed(1)}%', 
+                  style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 12)
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: progress,
+                backgroundColor: isDark ? Colors.black26 : const Color(0xFFE2E8F0),
+                color: AppTheme.primaryBlue,
+                minHeight: 8,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildDueDetails(BuildContext context, Map<String, dynamic> loan, NumberFormat fmt) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Next Installment Schedule', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Due Date', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                  const SizedBox(height: 4),
-                  Text(loan['due_date'].toString(), style: const TextStyle(color: AppTheme.warningOrange, fontSize: 16, fontWeight: FontWeight.bold)),
-                ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SlideFadeIn(
+      delay: 150,
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
+        borderOpacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Next Installment Schedule', 
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                fontWeight: FontWeight.bold, 
+                fontSize: 15
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text('EMI Amount', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                  const SizedBox(height: 4),
-                  Text(fmt.format(loan['monthly_installment']), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryBlue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              minimumSize: const Size.fromHeight(40),
             ),
-            onPressed: () {},
-            child: const Text('Pay Due Online', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Due Date', 
+                      style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 11)
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      loan['due_date'].toString(), 
+                      style: const TextStyle(color: AppTheme.warningOrange, fontSize: 16, fontWeight: FontWeight.bold)
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'EMI Amount', 
+                      style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 11)
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      fmt.format(loan['monthly_installment']), 
+                      style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                        fontSize: 16, 
+                        fontWeight: FontWeight.bold
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                minimumSize: const Size.fromHeight(40),
+              ),
+              onPressed: () {},
+              child: const Text('Pay Due Online', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildDocumentVault(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('My Document Vault', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 12),
-          ListView(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _buildDocItem('Signed Loan Agreement.pdf', '02 Jun 2026'),
-              const Divider(color: Colors.white12),
-              _buildDocItem('Aadhaar Verification Proof.pdf', '01 Jun 2026'),
-            ],
-          ),
-        ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SlideFadeIn(
+      delay: 200,
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
+        borderOpacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'My Document Vault', 
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                fontWeight: FontWeight.bold, 
+                fontSize: 15
+              ),
+            ),
+            const SizedBox(height: 12),
+            ListView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildDocItem(context, 'Signed Loan Agreement.pdf', '02 Jun 2026'),
+                Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                _buildDocItem(context, 'Aadhaar Verification Proof.pdf', '01 Jun 2026'),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildDocItem(String name, String date) {
+  Widget _buildDocItem(BuildContext context, String name, String date) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.file_present, color: AppTheme.primaryCyan),
-      title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-      subtitle: Text('Uploaded: $date', style: const TextStyle(color: Colors.grey, fontSize: 10)),
+      title: Text(
+        name, 
+        style: TextStyle(
+          color: isDark ? Colors.white : const Color(0xFF1E293B), 
+          fontSize: 13, 
+          fontWeight: FontWeight.bold
+        )
+      ),
+      subtitle: Text(
+        'Uploaded: $date', 
+        style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 10)
+      ),
       trailing: IconButton(
-        icon: const Icon(Icons.download, color: Colors.grey, size: 20),
+        icon: Icon(Icons.download, color: isDark ? Colors.grey : const Color(0xFF64748B), size: 20),
         onPressed: () {},
       ),
     );
   }
 
   Widget _buildReceiptsList(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Digital Receipts', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.verified, color: AppTheme.neonGreen),
-            title: const Text('EMI Payment Receipt #9938', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-            subtitle: const Text('Amount: ₹23,536 | Date: 02 Jun 2026', style: TextStyle(color: Colors.grey, fontSize: 10)),
-            trailing: TextButton(
-              onPressed: () {},
-              child: const Text('View PDF', style: TextStyle(fontSize: 11)),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SlideFadeIn(
+      delay: 250,
+      child: GlassCard(
+        padding: const EdgeInsets.all(20),
+        borderOpacity: 0.15,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Digital Receipts', 
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF0F172A), 
+                fontWeight: FontWeight.bold, 
+                fontSize: 15
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.verified, color: AppTheme.neonGreen),
+              title: Text(
+                'EMI Payment Receipt #9938', 
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF1E293B), 
+                  fontSize: 13, 
+                  fontWeight: FontWeight.bold
+                )
+              ),
+              subtitle: Text(
+                'Amount: ₹23,536 | Date: 02 Jun 2026', 
+                style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 10)
+              ),
+              trailing: TextButton(
+                onPressed: () {},
+                child: const Text('View PDF', style: TextStyle(fontSize: 11)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
