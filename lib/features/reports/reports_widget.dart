@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:excel/excel.dart' hide Border;
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/network/providers.dart';
+import '../../core/utils/file_saver.dart';
 
 
 class ReportsWidget extends ConsumerStatefulWidget {
@@ -287,8 +292,8 @@ class _ReportsWidgetState extends ConsumerState<ReportsWidget> {
     double totalPenalties = 0.0;
 
     for (var l in loans) {
-      totalPortfolio += (l['principal_amount'] as double);
-      totalCollected += (l['paid_balance'] as double);
+      totalPortfolio += (l['principal_amount'] as num).toDouble();
+      totalCollected += (l['paid_balance'] as num).toDouble();
       final penalties = service.calculatePenalty(l['id']);
       totalPenalties += penalties['total_penalty']!;
     }
@@ -342,8 +347,8 @@ class _ReportsWidgetState extends ConsumerState<ReportsWidget> {
           itemCount: agents.length,
           itemBuilder: (context, idx) {
             final a = agents[idx];
-            final target = a['target_amount'] as double? ?? 50000.0;
-            final collected = a['collected_amount'] as double? ?? 0.0;
+            final target = (a['target_amount'] as num?)?.toDouble() ?? 50000.0;
+            final collected = (a['collected_amount'] as num?)?.toDouble() ?? 0.0;
             final percent = target > 0 ? (collected / target) * 100 : 0.0;
             final isDark = Theme.of(context).brightness == Brightness.dark;
             return Card(
@@ -419,7 +424,7 @@ class _ReportsWidgetState extends ConsumerState<ReportsWidget> {
               ],
             ),
             subtitle: Text('Missed payments: ${l['missed_dues']} cycles', style: const TextStyle(fontSize: 10.5)),
-            trailing: Text('₹${(l['remaining_balance'] as double).toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.dangerRed, fontSize: 12)),
+            trailing: Text('₹${(l['remaining_balance'] as num).toDouble().toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.dangerRed, fontSize: 12)),
           ),
         );
       },
@@ -447,19 +452,339 @@ class _ReportsWidgetState extends ConsumerState<ReportsWidget> {
       },
     );
 
-    // Simulate audit calculations delay
-    await Future.delayed(const Duration(milliseconds: 2500));
+    try {
+      final service = ref.read(supabaseServiceProvider);
+      final String dateRangeStr = _selectedDateRange == null
+          ? 'All Time Records'
+          : '${_selectedDateRange!.start.toString().substring(0, 10)} to ${_selectedDateRange!.end.toString().substring(0, 10)}';
 
-    if (mounted) {
-      Navigator.pop(context); // Close loading dialog
-      setState(() => _isExporting = false);
+      DateTime? parseDate(String? s) {
+        if (s == null) return null;
+        return DateTime.tryParse(s);
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Successfully compiled and saved $_selectedReportType report in $format format.'),
-          backgroundColor: AppTheme.neonGreen,
-        ),
-      );
+      bool isWithinRange(String? dateStr) {
+        if (_selectedDateRange == null) return true;
+        final d = parseDate(dateStr);
+        if (d == null) return false;
+        final start = DateTime(_selectedDateRange!.start.year, _selectedDateRange!.start.month, _selectedDateRange!.start.day);
+        final end = DateTime(_selectedDateRange!.end.year, _selectedDateRange!.end.month, _selectedDateRange!.end.day, 23, 59, 59);
+        return d.isAfter(start.subtract(const Duration(seconds: 1))) && d.isBefore(end.add(const Duration(seconds: 1)));
+      }
+
+      CellValue toCellValue(dynamic val) {
+        if (val == null) return TextCellValue('');
+        if (val is int) return IntCellValue(val);
+        if (val is double) return DoubleCellValue(val);
+        if (val is num) return DoubleCellValue(val.toDouble());
+        if (val is bool) return BoolCellValue(val);
+        return TextCellValue(val.toString());
+      }
+
+      List<int> fileBytes = [];
+      final String ext = format == 'Excel' ? 'xlsx' : 'pdf';
+
+      if (_selectedReportType == 'collections') {
+        final collections = service.getCollections().where((c) => isWithinRange(c['collection_date'].toString())).toList();
+        if (format == 'Excel') {
+          final excel = Excel.createExcel();
+          final sheet = excel['Sheet1'];
+          sheet.appendRow([
+            toCellValue('Date'),
+            toCellValue('Customer'),
+            toCellValue('Amount (INR)'),
+            toCellValue('Payment Method'),
+            toCellValue('Receipt UUID'),
+            toCellValue('Notes'),
+          ]);
+          for (var c in collections) {
+            final loan = service.getLoanById(c['loan_id']);
+            final custName = loan != null ? (service.getCustomerById(loan['customer_id'])?['full_name'] ?? 'Client') : 'Client';
+            final dateStr = c['collection_date'].toString().substring(0, 10);
+            sheet.appendRow([
+              toCellValue(dateStr),
+              toCellValue(custName),
+              toCellValue((c['amount'] as num).toDouble()),
+              toCellValue(c['payment_method'].toString().toUpperCase()),
+              toCellValue(c['receipt_uuid']),
+              toCellValue(c['notes']),
+            ]);
+          }
+          fileBytes = excel.encode()!;
+        } else {
+          final pdf = pw.Document();
+          double total = 0.0;
+          final List<List<String>> tableData = collections.map<List<String>>((c) {
+            final loan = service.getLoanById(c['loan_id']);
+            final custName = loan != null ? (service.getCustomerById(loan['customer_id'])?['full_name'] ?? 'Client') : 'Client';
+            final dateStr = c['collection_date'].toString().substring(0, 10);
+            final amt = (c['amount'] as num).toDouble();
+            total += amt;
+            return [
+              dateStr,
+              custName,
+              'Rs. ${amt.toStringAsFixed(0)}',
+              c['payment_method'].toString().toUpperCase(),
+            ];
+          }).toList();
+
+          pdf.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (pw.Context context) {
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("LENDORA DAILY COLLECTIONS LEDGER", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16)),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Audit Period: $dateRangeStr", style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+                    pw.Text("Exported On: ${DateTime.now().toIso8601String().substring(0, 19).replaceAll('T', ' ')}", style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+                    pw.Divider(),
+                    pw.SizedBox(height: 10),
+                    pw.TableHelper.fromTextArray(
+                      headers: ['Date', 'Customer', 'Amount', 'Mode'],
+                      data: tableData,
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      cellStyle: const pw.TextStyle(fontSize: 10),
+                    ),
+                    pw.SizedBox(height: 15),
+                    pw.Text("Total Collected: Rs. ${total.toStringAsFixed(2)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+                  ],
+                );
+              },
+            ),
+          );
+          fileBytes = await pdf.save();
+        }
+      } else if (_selectedReportType == 'profits') {
+        final loans = service.getLoans();
+        double totalPortfolio = 0.0;
+        double totalCollected = 0.0;
+        double totalPenalties = 0.0;
+
+        for (var l in loans) {
+          totalPortfolio += (l['principal_amount'] as num).toDouble();
+          totalCollected += (l['paid_balance'] as num).toDouble();
+          final penalties = service.calculatePenalty(l['id']);
+          totalPenalties += penalties['total_penalty']!;
+        }
+
+        double netCashflow = totalCollected + totalPenalties;
+
+        if (format == 'Excel') {
+          final excel = Excel.createExcel();
+          final sheet = excel['Sheet1'];
+          sheet.appendRow([
+            toCellValue('Financial Metric'),
+            toCellValue('Value (INR)'),
+          ]);
+          sheet.appendRow([toCellValue('Lending Portfolio Capital'), toCellValue(totalPortfolio)]);
+          sheet.appendRow([toCellValue('Total Principal Recovered'), toCellValue(totalCollected)]);
+          sheet.appendRow([toCellValue('Late Penalties Accrued'), toCellValue(totalPenalties)]);
+          sheet.appendRow([toCellValue('Net Cash Recovery (Total)'), toCellValue(netCashflow)]);
+          fileBytes = excel.encode()!;
+        } else {
+          final pdf = pw.Document();
+          pdf.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (pw.Context context) {
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("LENDORA REVENUE & PROFIT REPORT", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16)),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Audit Period: $dateRangeStr", style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+                    pw.Text("Exported On: ${DateTime.now().toIso8601String().substring(0, 19).replaceAll('T', ' ')}", style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+                    pw.Divider(),
+                    pw.SizedBox(height: 10),
+                    pw.TableHelper.fromTextArray(
+                      headers: ['Financial Metric', 'Value'],
+                      data: [
+                        ['Lending Portfolio Capital', 'Rs. ${totalPortfolio.toStringAsFixed(2)}'],
+                        ['Total Principal Recovered', 'Rs. ${totalCollected.toStringAsFixed(2)}'],
+                        ['Late Penalties Accrued', 'Rs. ${totalPenalties.toStringAsFixed(2)}'],
+                        ['Net Cash Recovery (Total)', 'Rs. ${netCashflow.toStringAsFixed(2)}'],
+                      ],
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      cellStyle: const pw.TextStyle(fontSize: 10),
+                    ),
+                  ],
+                );
+              },
+            ),
+          );
+          fileBytes = await pdf.save();
+        }
+      } else if (_selectedReportType == 'agents') {
+        final agents = await service.getAgentsWithStats();
+        if (format == 'Excel') {
+          final excel = Excel.createExcel();
+          final sheet = excel['Sheet1'];
+          sheet.appendRow([
+            toCellValue('Agent Name'),
+            toCellValue('Status'),
+            toCellValue('Target Amount'),
+            toCellValue('Collected Amount'),
+            toCellValue('Completion %'),
+          ]);
+          for (var a in agents) {
+            final target = (a['target_amount'] as num?)?.toDouble() ?? 50000.0;
+            final collected = (a['collected_amount'] as num?)?.toDouble() ?? 0.0;
+            final percent = target > 0 ? (collected / target) * 100 : 0.0;
+            sheet.appendRow([
+              toCellValue(a['full_name']),
+              toCellValue(a['status']),
+              toCellValue(target),
+              toCellValue(collected),
+              toCellValue(percent),
+            ]);
+          }
+          fileBytes = excel.encode()!;
+        } else {
+          final pdf = pw.Document();
+          pdf.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (pw.Context context) {
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("LENDORA AGENT PERFORMANCE REPORT", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16)),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Exported On: ${DateTime.now().toIso8601String().substring(0, 19).replaceAll('T', ' ')}", style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+                    pw.Divider(),
+                    pw.SizedBox(height: 10),
+                    pw.TableHelper.fromTextArray(
+                      headers: ['Agent Name', 'Status', 'Target', 'Collected', 'Comp %'],
+                      data: agents.map((a) {
+                        final target = (a['target_amount'] as num?)?.toDouble() ?? 50000.0;
+                        final collected = (a['collected_amount'] as num?)?.toDouble() ?? 0.0;
+                        final percent = target > 0 ? (collected / target) * 100 : 0.0;
+                        return [
+                          a['full_name'].toString(),
+                          a['status'].toString(),
+                          'Rs. ${target.toStringAsFixed(0)}',
+                          'Rs. ${collected.toStringAsFixed(0)}',
+                          '${percent.toStringAsFixed(1)}%',
+                        ];
+                      }).toList(),
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      cellStyle: const pw.TextStyle(fontSize: 10),
+                    ),
+                  ],
+                );
+              },
+            ),
+          );
+          fileBytes = await pdf.save();
+        }
+      } else if (_selectedReportType == 'risk') {
+        final loans = service.getLoans();
+        final riskLoans = loans.where((l) => l['status'] == 'defaulted' || l['missed_dues'] > 0).toList();
+        if (format == 'Excel') {
+          final excel = Excel.createExcel();
+          final sheet = excel['Sheet1'];
+          sheet.appendRow([
+            toCellValue('Customer Name'),
+            toCellValue('Status'),
+            toCellValue('Missed Cycles'),
+            toCellValue('Remaining Balance (INR)'),
+          ]);
+          for (var l in riskLoans) {
+            final cust = service.getCustomerById(l['customer_id']);
+            final name = cust != null ? cust['full_name'] : 'Customer';
+            final status = l['status'] == 'defaulted' ? 'DEFAULTED' : 'OVERDUE';
+            sheet.appendRow([
+              toCellValue(name),
+              toCellValue(status),
+              toCellValue(l['missed_dues']),
+              toCellValue((l['remaining_balance'] as num).toDouble()),
+            ]);
+          }
+          fileBytes = excel.encode()!;
+        } else {
+          final pdf = pw.Document();
+          pdf.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (pw.Context context) {
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text("LENDORA RISK & DEFAULT REPORT", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16)),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Exported On: ${DateTime.now().toIso8601String().substring(0, 19).replaceAll('T', ' ')}", style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+                    pw.Divider(),
+                    pw.SizedBox(height: 10),
+                    pw.TableHelper.fromTextArray(
+                      headers: ['Customer Name', 'Status', 'Missed Cycles', 'Remaining Balance'],
+                      data: riskLoans.map((l) {
+                        final cust = service.getCustomerById(l['customer_id']);
+                        final name = cust != null ? cust['full_name'] : 'Customer';
+                        final status = l['status'] == 'defaulted' ? 'DEFAULTED' : 'OVERDUE';
+                        return [
+                          name,
+                          status,
+                          l['missed_dues'].toString(),
+                          'Rs. ${l['remaining_balance'].toStringAsFixed(2)}',
+                        ];
+                      }).toList(),
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      cellStyle: const pw.TextStyle(fontSize: 10),
+                    ),
+                  ],
+                );
+              },
+            ),
+          );
+          fileBytes = await pdf.save();
+        }
+      }
+
+      // Save report
+      final timestamp = '${DateTime.now().toIso8601String().substring(0, 10)}_${DateTime.now().millisecondsSinceEpoch}';
+      final fileName = '${_selectedReportType}_report_$timestamp.$ext';
+      
+      await saveFile(fileBytes, fileName);
+
+      // Simulate audit calculations delay for UI premium feel
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        setState(() => _isExporting = false);
+
+        final message = kIsWeb
+            ? 'Report downloaded successfully: $fileName'
+            : 'Report saved to: c:\\LendoraZ\\exports\\$fileName';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: AppTheme.neonGreen,
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: 'DISMISS',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        setState(() => _isExporting = false);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: AppTheme.dangerRed,
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
     }
   }
 }

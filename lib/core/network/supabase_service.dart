@@ -59,6 +59,7 @@ class SupabaseService extends ChangeNotifier {
   final List<Map<String, dynamic>> _companies = [];
   final List<Map<String, dynamic>> _allUsers = [];
   final List<Map<String, dynamic>> _systemSettings = [];
+  final List<Map<String, dynamic>> _documents = [];
   final Map<String, bool> _featureToggles = {
     'ai_analytics': true,
     'whatsapp_gateway': true,
@@ -703,6 +704,47 @@ class SupabaseService extends ChangeNotifier {
       }
     ]);
 
+    // Seed Documents
+    _documents.clear();
+    _documents.addAll([
+      {
+        'id': 'doc-1',
+        'customer_id': 'a06c1111-2222-3333-4444-555566667777',
+        'loan_id': 'b06c1111-2222-3333-4444-555566667777',
+        'name': 'Aadhaar Card (KYC)',
+        'document_type': 'aadhaar',
+        'file_url': 'https://lendoraz.com/vault/aadhaar_ravi.pdf',
+        'created_at': DateTime.now().subtract(const Duration(days: 30)).toIso8601String(),
+      },
+      {
+        'id': 'doc-2',
+        'customer_id': 'a06c1111-2222-3333-4444-555566667777',
+        'loan_id': 'b06c1111-2222-3333-4444-555566667777',
+        'name': 'Promissory Note Signed',
+        'document_type': 'promissory_note',
+        'file_url': 'https://lendoraz.com/vault/note_ravi.pdf',
+        'created_at': DateTime.now().subtract(const Duration(days: 30)).toIso8601String(),
+      },
+      {
+        'id': 'doc-3',
+        'customer_id': 'a06c2222-3333-4444-5555-666677778888',
+        'loan_id': 'b06c2222-3333-4444-5555-666677778888',
+        'name': 'PAN Card - Ananya',
+        'document_type': 'pan',
+        'file_url': 'https://lendoraz.com/vault/pan_ananya.pdf',
+        'created_at': DateTime.now().subtract(const Duration(days: 15)).toIso8601String(),
+      },
+      {
+        'id': 'doc-4',
+        'customer_id': 'a06c3333-4444-5555-6666-777788889999',
+        'loan_id': 'b06c3333-4444-5555-6666-777788889999',
+        'name': 'Loan Agreement Document',
+        'document_type': 'agreement',
+        'file_url': 'https://lendoraz.com/vault/agreement_vikram.pdf',
+        'created_at': DateTime.now().subtract(const Duration(days: 5)).toIso8601String(),
+      }
+    ]);
+
     // Seed Chit Funds
     _chitFunds.addAll([
       {
@@ -861,6 +903,14 @@ class SupabaseService extends ChangeNotifier {
       }
 
       try {
+        final documentsRes = await client.from('documents').select();
+        _documents.clear();
+        _documents.addAll(_safeCastList(documentsRes));
+      } catch (e) {
+        debugPrint("Error fetching documents table: $e");
+      }
+
+      try {
         final chitFundsRes = await client.from('chit_groups').select();
         _chitFunds.clear();
         _chitFunds.addAll(_safeCastList(chitFundsRes));
@@ -949,6 +999,48 @@ class SupabaseService extends ChangeNotifier {
     return val is List ? _safeCastList(val) : [];
   }
 
+  List<Map<String, dynamic>> getDocuments() {
+    final dynamic val = _documents;
+    return val is List ? _safeCastList(val) : [];
+  }
+
+  List<Map<String, dynamic>> getDocumentsForCustomer(String customerId) {
+    return getDocuments().where((d) => d['customer_id'] == customerId).toList();
+  }
+
+  Future<Map<String, dynamic>> uploadDocument({
+    required String customerId,
+    required String? loanId,
+    required String name,
+    required String documentType,
+    required String fileUrl,
+  }) async {
+    final companyId = _currentCompanyId ?? '99999999-9999-9999-9999-999999999999';
+    final docItem = {
+      'id': _isDemoMode ? 'doc-${const Uuid().v4().substring(0, 8)}' : const Uuid().v4(),
+      'customer_id': customerId,
+      'loan_id': loanId,
+      'company_id': companyId,
+      'name': name,
+      'document_type': documentType,
+      'file_url': fileUrl,
+      'created_at': DateTime.now().toIso8601String(),
+    };
+
+    _documents.insert(0, docItem);
+
+    if (!_isDemoMode) {
+      try {
+        await Supabase.instance.client.from('documents').insert(docItem);
+      } catch (e) {
+        debugPrint("Failed to upload document to Supabase: $e");
+      }
+    }
+
+    notifyListeners();
+    return docItem;
+  }
+
   Map<String, dynamic>? getCustomerById(String id) {
     final list = getCustomers();
     return list.firstWhere((c) => c['id'] == id, orElse: () => {});
@@ -975,10 +1067,11 @@ class SupabaseService extends ChangeNotifier {
     double newPaid = 0.0;
     String newStatus = 'active';
 
+    Map<String, dynamic>? loan;
     if (loanIndex != -1) {
       // Calculate penalties if any
       final penalties = calculatePenalty(loanId);
-      final loan = _loans[loanIndex];
+      loan = _loans[loanIndex];
       double currentRemaining = loan['remaining_balance'] as double;
       double currentPaid = loan['paid_balance'] as double;
 
@@ -1029,17 +1122,41 @@ class SupabaseService extends ChangeNotifier {
         try {
           final currentUser = Supabase.instance.client.auth.currentUser;
           final agentId = currentUser?.id ?? '675da47d-16d0-4523-aebe-e38245a67dec';
+          final dbCompanyId = (loan != null ? loan['company_id'] : null) ?? _currentCompanyId ?? '99999999-9999-9999-9999-999999999999';
+          final dbCustomerId = (loan != null ? loan['customer_id'] : null) ?? 'a06c1111-2222-3333-4444-555566667777';
 
           await Supabase.instance.client.from('collections').insert({
             'id': collectionItem['id'],
             'loan_id': loanId,
             'agent_id': agentId,
+            'company_id': dbCompanyId,
             'amount': amount,
             'payment_method': paymentMethod,
             'status': 'success',
             'notes': notes,
             'geo_location': collectionItem['geo_location'],
             'receipt_uuid': collectionItem['receipt_uuid'].toString(),
+          });
+
+          final paymentId = const Uuid().v4();
+          await Supabase.instance.client.from('payments').insert({
+            'id': paymentId,
+            'collection_id': collectionItem['id'],
+            'customer_id': dbCustomerId,
+            'company_id': dbCompanyId,
+            'amount': amount,
+            'status': 'success',
+          });
+
+          final receiptId = const Uuid().v4();
+          final receiptNumber = 'REC-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 4).toUpperCase()}';
+          await Supabase.instance.client.from('receipts').insert({
+            'id': receiptId,
+            'payment_id': paymentId,
+            'company_id': dbCompanyId,
+            'receipt_number': receiptNumber,
+            'amount': amount,
+            'file_url': null,
           });
 
           await Supabase.instance.client.from('loans').update({
@@ -1251,8 +1368,6 @@ class SupabaseService extends ChangeNotifier {
       'created_at': DateTime.now().toIso8601String(),
     };
 
-    _leads.insert(0, leadItem);
-
     if (!_isDemoMode) {
       try {
         await Supabase.instance.client.from('crm_leads').insert({
@@ -1272,18 +1387,17 @@ class SupabaseService extends ChangeNotifier {
         );
       } catch (e) {
         debugPrint("Failed to write CRM Lead to Supabase: $e");
+        rethrow;
       }
     }
 
+    _leads.insert(0, leadItem);
     notifyListeners();
   }
 
   Future<void> updateLeadStatus(String leadId, String newStatusStr) async {
     final idx = _leads.indexWhere((l) => l['id'] == leadId);
     if (idx != -1) {
-      _leads[idx] = Map<String, dynamic>.from({..._leads[idx], 'status': newStatusStr});
-      notifyListeners();
-
       if (!_isDemoMode) {
         try {
           await Supabase.instance.client
@@ -1298,17 +1412,18 @@ class SupabaseService extends ChangeNotifier {
           );
         } catch (e) {
           debugPrint("Failed to update lead status in Supabase: $e");
+          rethrow;
         }
       }
+
+      _leads[idx] = Map<String, dynamic>.from({..._leads[idx], 'status': newStatusStr});
+      notifyListeners();
     }
   }
 
   Future<void> deleteLead(String leadId) async {
     final idx = _leads.indexWhere((l) => l['id'] == leadId);
     if (idx != -1) {
-      _leads.removeAt(idx);
-      notifyListeners();
-
       if (!_isDemoMode) {
         try {
           await Supabase.instance.client
@@ -1322,8 +1437,12 @@ class SupabaseService extends ChangeNotifier {
           );
         } catch (e) {
           debugPrint("Failed to delete lead from Supabase: $e");
+          rethrow;
         }
       }
+
+      _leads.removeAt(idx);
+      notifyListeners();
     }
   }
 

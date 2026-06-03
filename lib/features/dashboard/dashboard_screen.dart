@@ -169,90 +169,111 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
       elevation: 0,
       flexibleSpace: ClipRRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
-            color: isDark 
-                ? const Color(0xFF090D16).withValues(alpha: 0.4) 
-                : Colors.white.withValues(alpha: 0.4),
+            decoration: BoxDecoration(
+              color: isDark 
+                  ? const Color(0xFF090D16).withValues(alpha: 0.55) 
+                  : Colors.white.withValues(alpha: 0.65),
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark 
+                      ? Colors.white.withValues(alpha: 0.08) 
+                      : Colors.black.withValues(alpha: 0.06),
+                  width: 1.0,
+                ),
+              ),
+            ),
           ),
         ),
       ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'LendoraZ',
-            style: GoogleFonts.plusJakartaSans(
-              fontWeight: FontWeight.w900,
-              fontSize: 22,
-              letterSpacing: -0.5,
-              color: isDark ? Colors.white : const Color(0xFF0F172A),
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [
+                AppTheme.primaryBlue,
+                AppTheme.primaryCyan,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ).createShader(bounds),
+            child: Text(
+              'LendoraZ',
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w900,
+                fontSize: 20,
+                letterSpacing: -0.5,
+                color: Colors.white,
+              ),
             ),
           ),
-          Text(
-            'Role: ${service.currentRole.displayName}',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.primaryBlue,
+          const SizedBox(height: 2),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              service.currentRole.displayName.toUpperCase(),
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 8,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.primaryBlue,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
         ],
       ),
       actions: [
-        // Offline / Online / Demo Mode Switcher with Indicator Badge
-        Container(
-          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: service.isDemoMode
-                ? const Color(0xFFFFB800).withValues(alpha: 0.08)
-                : (service.isOffline
-                    ? const Color(0xFFEF4444).withValues(alpha: 0.08)
-                    : const Color(0xFF10B981).withValues(alpha: 0.08)),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
+        // Offline / Online / Demo Mode Switcher - Interactive Status Pill
+        GestureDetector(
+          onTap: () {
+            if (!service.isDemoMode) {
+              service.toggleNetworkMode();
+            }
+          },
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
               color: service.isDemoMode
-                  ? const Color(0xFFFFB800).withValues(alpha: 0.25)
+                  ? const Color(0xFFFFB800).withValues(alpha: 0.1)
                   : (service.isOffline
-                      ? const Color(0xFFEF4444).withValues(alpha: 0.25)
-                      : const Color(0xFF10B981).withValues(alpha: 0.25)),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PulseDot(isDemo: service.isDemoMode, isOffline: service.isOffline),
-              const SizedBox(width: 6),
-              Text(
-                service.isDemoMode 
-                    ? 'DEMO' 
-                    : (service.isOffline ? 'OFFLINE' : 'ONLINE'),
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  color: service.isDemoMode
-                      ? const Color(0xFFD97706)
-                      : (service.isOffline ? const Color(0xFFEF4444) : const Color(0xFF10B981)),
-                ),
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.1)
+                      : const Color(0xFF10B981).withValues(alpha: 0.1)),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: service.isDemoMode
+                    ? const Color(0xFFFFB800).withValues(alpha: 0.3)
+                    : (service.isOffline
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                        : const Color(0xFF10B981).withValues(alpha: 0.3)),
+                width: 1.2,
               ),
-              if (!service.isDemoMode) ...[
-                const SizedBox(width: 4),
-                SizedBox(
-                  height: 18,
-                  width: 28,
-                  child: Switch(
-                    value: !service.isOffline,
-                    onChanged: (_) => service.toggleNetworkMode(),
-                    activeColor: const Color(0xFF10B981),
-                    inactiveThumbColor: const Color(0xFFEF4444),
-                    inactiveTrackColor: const Color(0xFFEF4444).withValues(alpha: 0.2),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _PulseDot(isDemo: service.isDemoMode, isOffline: service.isOffline),
+                const SizedBox(width: 5),
+                Text(
+                  service.isDemoMode 
+                      ? 'DEMO' 
+                      : (service.isOffline ? 'OFFLINE' : 'ONLINE'),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: service.isDemoMode
+                        ? const Color(0xFFFFB800)
+                        : (service.isOffline ? const Color(0xFFEF4444) : const Color(0xFF10B981)),
                   ),
                 ),
               ],
-            ],
+            ),
           ),
         ),
         // Sync trigger if queue exists
@@ -266,31 +287,43 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
           ),
         // Theme Switcher Button
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
+          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+              width: 1.0,
+            ),
           ),
           child: IconButton(
             tooltip: 'Toggle Theme Mode',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             icon: Icon(
-              isDark ? Icons.light_mode : Icons.dark_mode,
+              isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
               color: isDark ? Colors.yellow.shade700 : const Color(0xFF475569),
-              size: 18,
+              size: 16,
             ),
             onPressed: () => service.toggleThemeMode(),
           ),
         ),
         // Logout Button
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
+          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+            border: Border.all(
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+              width: 1.0,
+            ),
           ),
           child: IconButton(
             tooltip: 'Log Out',
-            icon: Icon(Icons.logout, color: isDark ? Colors.white70 : const Color(0xFF475569), size: 18),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            icon: Icon(Icons.logout_outlined, color: isDark ? Colors.white70 : const Color(0xFF475569), size: 16),
             onPressed: () async {
               await service.signOut();
               if (context.mounted) {
