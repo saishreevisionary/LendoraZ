@@ -37,8 +37,11 @@ class SupabaseService extends ChangeNotifier {
   AppUserRole _currentRole = AppUserRole.superAdmin;
   String _currentUserEmail = '';
   String _currentUserName = '';
+  String? _currentCompanyId;
   String? _initError;
   ThemeMode _themeMode = ThemeMode.light;
+
+  String? get currentCompanyId => _currentCompanyId;
 
   // Offline queue
   final List<Map<String, dynamic>> _offlineQueue = [];
@@ -156,10 +159,11 @@ class SupabaseService extends ChangeNotifier {
     try {
       final profileData = await Supabase.instance.client
           .from('users')
-          .select('full_name')
+          .select('full_name, company_id')
           .eq('id', userId)
           .single();
       _currentUserName = profileData['full_name'] ?? _currentUserName;
+      _currentCompanyId = profileData['company_id'] as String?;
       
       final List<dynamic> roleRes = await Supabase.instance.client
           .from('user_roles')
@@ -459,36 +463,42 @@ class SupabaseService extends ChangeNotifier {
       case AppUserRole.superAdmin:
         _currentUserName = 'Amit Varma (Super)';
         _currentUserEmail = 'admin@lendoraz.com';
+        _currentCompanyId = null;
         _themeMode = ThemeMode.dark;
         SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
       case AppUserRole.companyOwner:
         _currentUserName = 'Rajesh Singhal';
         _currentUserEmail = 'owner@lendoraz.com';
+        _currentCompanyId = '99999999-9999-9999-9999-999999999999';
         _themeMode = ThemeMode.light;
         SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'light'));
         break;
       case AppUserRole.manager:
         _currentUserName = 'Sarah D\'Souza';
         _currentUserEmail = 'manager@lendoraz.com';
+        _currentCompanyId = '99999999-9999-9999-9999-999999999999';
         _themeMode = ThemeMode.dark;
         SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
       case AppUserRole.collectionAgent:
         _currentUserName = 'Rohan Naik';
         _currentUserEmail = 'agent@lendoraz.com';
+        _currentCompanyId = '99999999-9999-9999-9999-999999999999';
         _themeMode = ThemeMode.dark;
         SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
       case AppUserRole.accountant:
         _currentUserName = 'Nisha Iyer';
         _currentUserEmail = 'accountant@lendoraz.com';
+        _currentCompanyId = '99999999-9999-9999-9999-999999999999';
         _themeMode = ThemeMode.dark;
         SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
       case AppUserRole.customer:
         _currentUserName = 'Ravi Kumar';
         _currentUserEmail = 'customer@lendoraz.com';
+        _currentCompanyId = '99999999-9999-9999-9999-999999999999';
         _themeMode = ThemeMode.dark;
         SharedPreferences.getInstance().then((prefs) => prefs.setString('app_theme_mode', 'dark'));
         break;
@@ -1229,9 +1239,10 @@ class SupabaseService extends ChangeNotifier {
     required double requestedAmount,
     required String notes,
   }) async {
+    final companyId = _currentCompanyId ?? '99999999-9999-9999-9999-999999999999';
     final leadItem = {
       'id': _isDemoMode ? 'lead-${const Uuid().v4().substring(0, 8)}' : const Uuid().v4(),
-      'company_id': '99999999-9999-9999-9999-999999999999',
+      'company_id': companyId,
       'full_name': fullName,
       'phone': phone,
       'requested_amount': requestedAmount,
@@ -1244,8 +1255,6 @@ class SupabaseService extends ChangeNotifier {
 
     if (!_isDemoMode) {
       try {
-        final companyId = getCompanies().isNotEmpty ? getCompanies().first['id'] : '99999999-9999-9999-9999-999999999999';
-
         await Supabase.instance.client.from('crm_leads').insert({
           'id': leadItem['id'],
           'company_id': companyId,
@@ -1291,6 +1300,130 @@ class SupabaseService extends ChangeNotifier {
           debugPrint("Failed to update lead status in Supabase: $e");
         }
       }
+    }
+  }
+
+  Future<void> deleteLead(String leadId) async {
+    final idx = _leads.indexWhere((l) => l['id'] == leadId);
+    if (idx != -1) {
+      _leads.removeAt(idx);
+      notifyListeners();
+
+      if (!_isDemoMode) {
+        try {
+          await Supabase.instance.client
+              .from('crm_leads')
+              .delete()
+              .eq('id', leadId);
+
+          await logAuditAction(
+            action: 'DELETE_LEAD',
+            targetId: leadId,
+          );
+        } catch (e) {
+          debugPrint("Failed to delete lead from Supabase: $e");
+        }
+      }
+    }
+  }
+
+  Future<void> convertLeadToCustomer({
+    required Map<String, dynamic> lead,
+    required double loanAmount,
+    required double interestRate,
+    required int termMonths,
+  }) async {
+    final companyId = _currentCompanyId ?? '99999999-9999-9999-9999-999999999999';
+
+    if (_isDemoMode) {
+      final customerId = 'cust-${const Uuid().v4().substring(0, 8)}';
+      _customers.add({
+        'id': customerId,
+        'full_name': lead['full_name'],
+        'phone': lead['phone'],
+        'email': lead['email'] ?? '',
+        'pan_number': 'PAN${const Uuid().v4().substring(0, 5).toUpperCase()}',
+        'aadhaar_number': '1234-5678-${const Uuid().v4().substring(0, 4)}',
+        'credit_score': 700,
+        'risk_level': 'low',
+        'address': 'Indiranagar, Bengaluru',
+        'geo_location': {'lat': 12.9716, 'lng': 77.5946},
+      });
+
+      final loanId = 'loan-${const Uuid().v4().substring(0, 8)}';
+      final monthlyInstallment = (loanAmount * (1 + (interestRate / 100))) / termMonths;
+      _loans.add({
+        'id': loanId,
+        'customer_id': customerId,
+        'principal_amount': loanAmount,
+        'interest_rate_annual': interestRate,
+        'term_months': termMonths,
+        'monthly_installment': double.parse(monthlyInstallment.toStringAsFixed(2)),
+        'remaining_balance': loanAmount,
+        'paid_balance': 0.0,
+        'start_date': DateTime.now().toIso8601String().substring(0, 10),
+        'due_date': DateTime.now().add(Duration(days: termMonths * 30)).toIso8601String().substring(0, 10),
+        'status': 'active',
+        'collateral_type': 'none',
+        'missed_dues': 0,
+      });
+
+      // Update lead status to converted
+      final leadIdx = _leads.indexWhere((l) => l['id'] == lead['id']);
+      if (leadIdx != -1) {
+        _leads[leadIdx] = Map<String, dynamic>.from({..._leads[leadIdx], 'status': 'converted'});
+      }
+      notifyListeners();
+      return;
+    }
+
+    try {
+      // 1. Create customer
+      final customerRes = await Supabase.instance.client.from('customers').insert({
+        'company_id': companyId,
+        'full_name': lead['full_name'],
+        'phone': lead['phone'],
+        'email': lead['email'] ?? '',
+        'risk_level': 'low',
+        'address': 'Registered via CRM Lead Conversion',
+      }).select().single();
+
+      final customerId = customerRes['id'];
+
+      // 2. Create loan
+      final monthlyInstallment = (loanAmount * (1 + (interestRate / 100))) / termMonths;
+      await Supabase.instance.client.from('loans').insert({
+        'customer_id': customerId,
+        'company_id': companyId,
+        'principal_amount': loanAmount,
+        'interest_rate_annual': interestRate,
+        'term_months': termMonths,
+        'monthly_installment': double.parse(monthlyInstallment.toStringAsFixed(2)),
+        'remaining_balance': loanAmount,
+        'paid_balance': 0.0,
+        'start_date': DateTime.now().toIso8601String().substring(0, 10),
+        'due_date': DateTime.now().add(Duration(days: termMonths * 30)).toIso8601String().substring(0, 10),
+        'status': 'active',
+        'collateral_type': 'none',
+        'missed_dues': 0,
+      });
+
+      // 3. Update lead status
+      await Supabase.instance.client
+          .from('crm_leads')
+          .update({'status': 'converted'})
+          .eq('id', lead['id']);
+
+      await logAuditAction(
+        action: 'CONVERT_LEAD_TO_CUSTOMER',
+        targetId: lead['id'].toString(),
+        details: {'customer_id': customerId, 'amount': loanAmount},
+      );
+
+      await refreshDatabaseData();
+    } catch (e) {
+      debugPrint("Failed to convert CRM Lead: $e");
+      rethrow;
     }
   }
 
