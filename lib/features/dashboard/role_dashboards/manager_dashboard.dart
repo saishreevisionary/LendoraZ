@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/network/providers.dart';
+import '../../../core/widgets/kpi_card.dart';
+import '../../../core/widgets/dashboard_section.dart';
 
 class ManagerDashboard extends ConsumerWidget {
   const ManagerDashboard({super.key});
@@ -45,6 +47,7 @@ class ManagerDashboard extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -52,12 +55,14 @@ class ManagerDashboard extends ConsumerWidget {
           'Operations Center',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.w900,
-            color: Colors.white,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
         Text(
           'Track field agents, review overdue payments, and process new leads.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: isDark ? Colors.grey : const Color(0xFF64748B),
+          ),
         ),
       ],
     );
@@ -72,21 +77,21 @@ class ManagerDashboard extends ConsumerWidget {
       mainAxisSpacing: 12,
       childAspectRatio: MediaQuery.of(context).size.width > 600 ? 1.6 : 3.0,
       children: [
-        _buildKPICard(
+        KpiCard(
           title: 'Today\'s Collections',
           value: fmt.format(collectedToday),
           subtitle: 'Expected: ₹45,000',
           icon: Icons.payments,
           color: AppTheme.neonGreen,
         ),
-        _buildKPICard(
+        KpiCard(
           title: 'Risk Alerts',
           value: '$alertCount',
           subtitle: 'High-risk accounts active',
           icon: Icons.warning_amber_rounded,
           color: AppTheme.dangerRed,
         ),
-        _buildKPICard(
+        KpiCard(
           title: 'New Leads',
           value: '$leadCount',
           subtitle: 'Unassigned prospects',
@@ -97,77 +102,23 @@ class ManagerDashboard extends ConsumerWidget {
     );
   }
 
-  Widget _buildKPICard({
-    required String title,
-    required String value,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 10)),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 24),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildActiveAlerts(BuildContext context, List<Map<String, dynamic>> alerts, SupabaseService service) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return DashboardSectionCard(
+      title: 'Active Overdue Risk Alerts',
+      action: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(color: AppTheme.dangerRed.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+        child: Text('${alerts.length} Active', style: const TextStyle(color: AppTheme.dangerRed, fontSize: 10, fontWeight: FontWeight.bold)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Active Overdue Risk Alerts', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: AppTheme.dangerRed.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-                child: Text('${alerts.length} Active', style: const TextStyle(color: AppTheme.dangerRed, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (alerts.isEmpty)
-            const Text('No active risk alerts at this time.', style: TextStyle(color: Colors.grey, fontSize: 13))
-          else
-            ListView.separated(
+      padding: const EdgeInsets.all(20),
+      child: alerts.isEmpty
+          ? Text('No active risk alerts at this time.', style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 13))
+          : ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: alerts.length,
-              separatorBuilder: (context, index) => const Divider(color: Colors.white12),
+              separatorBuilder: (context, index) => Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
               itemBuilder: (context, idx) {
                 final a = alerts[idx];
                 final customer = service.getCustomerById(a['customer_id']);
@@ -178,8 +129,21 @@ class ManagerDashboard extends ConsumerWidget {
                     backgroundColor: AppTheme.dangerRed,
                     child: Icon(Icons.priority_high, color: Colors.white, size: 16),
                   ),
-                  title: Text(customer?['full_name'] ?? 'Unknown Customer', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text('${a['missed_dues_count']} payments missed in a row.', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                  title: Text(
+                    customer?['full_name'] ?? 'Unknown Customer',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${a['missed_dues_count']} payments missed in a row.',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey : const Color(0xFF64748B),
+                      fontSize: 11,
+                    ),
+                  ),
                   trailing: TextButton(
                     onPressed: () {},
                     child: const Text('Reassign Agent', style: TextStyle(fontSize: 12, color: AppTheme.primaryCyan)),
@@ -187,79 +151,79 @@ class ManagerDashboard extends ConsumerWidget {
                 );
               },
             ),
-        ],
-      ),
     );
   }
 
   Widget _buildAgentActivities(BuildContext context) {
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return DashboardSectionCard(
+      title: 'Field Agent Status',
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Field Agent Status', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const CircleAvatar(
-              backgroundColor: AppTheme.primaryBlue,
-              child: Icon(Icons.person, color: Colors.white),
-            ),
-            title: const Text('Rohan Naik (Agent)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-            subtitle: const Text('Checked In: 09:15 AM | East Bengaluru', style: TextStyle(color: Colors.grey, fontSize: 11)),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: AppTheme.neonGreen.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-              child: const Text('ON DUTY', style: TextStyle(color: AppTheme.neonGreen, fontSize: 9, fontWeight: FontWeight.bold)),
-            ),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const CircleAvatar(
+          backgroundColor: AppTheme.primaryBlue,
+          child: Icon(Icons.person, color: Colors.white),
+        ),
+        title: Text(
+          'Rohan Naik (Agent)',
+          style: TextStyle(
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
           ),
-        ],
+        ),
+        subtitle: Text(
+          'Checked In: 09:15 AM | East Bengaluru',
+          style: TextStyle(
+            color: isDark ? Colors.grey : const Color(0xFF64748B),
+            fontSize: 11,
+          ),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(color: AppTheme.neonGreen.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+          child: const Text('ON DUTY', style: TextStyle(color: AppTheme.neonGreen, fontSize: 9, fontWeight: FontWeight.bold)),
+        ),
       ),
     );
   }
 
   Widget _buildLeadsPanel(BuildContext context, List<Map<String, dynamic>> leads) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return DashboardSectionCard(
+      title: 'Incoming CRM Leads',
+      action: TextButton(
+        onPressed: () {},
+        child: const Text('View All', style: TextStyle(fontSize: 12)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Incoming CRM Leads', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              TextButton(
-                onPressed: () {},
-                child: const Text('View All', style: TextStyle(fontSize: 12)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (leads.isEmpty)
-            const Text('No unassigned leads.', style: TextStyle(color: Colors.grey, fontSize: 13))
-          else
-            ListView.separated(
+      padding: const EdgeInsets.all(20),
+      child: leads.isEmpty
+          ? Text('No unassigned leads.', style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 13))
+          : ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: leads.length.clamp(0, 2),
-              separatorBuilder: (context, index) => const Divider(color: Colors.white12),
+              separatorBuilder: (context, index) => Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
               itemBuilder: (context, idx) {
                 final l = leads[idx];
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(l['full_name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text('Requested: ₹${l['requested_amount']?.toString() ?? "0"}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                  title: Text(
+                    l['full_name'],
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Requested: ₹${l['requested_amount']?.toString() ?? "0"}',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey : const Color(0xFF64748B),
+                      fontSize: 11,
+                    ),
+                  ),
                   trailing: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryBlue,
@@ -272,8 +236,6 @@ class ManagerDashboard extends ConsumerWidget {
                 );
               },
             ),
-        ],
-      ),
     );
   }
 }

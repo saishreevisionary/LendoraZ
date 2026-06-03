@@ -38,7 +38,7 @@ class SupabaseService extends ChangeNotifier {
   String _currentUserEmail = '';
   String _currentUserName = '';
   String? _initError;
-  ThemeMode _themeMode = ThemeMode.dark;
+  ThemeMode _themeMode = ThemeMode.light;
 
   // Offline queue
   final List<Map<String, dynamic>> _offlineQueue = [];
@@ -219,7 +219,7 @@ class SupabaseService extends ChangeNotifier {
       _featureToggles['ai_analytics'] = prefs.getBool('feature_ai_analytics') ?? true;
       _featureToggles['whatsapp_gateway'] = prefs.getBool('feature_whatsapp_gateway') ?? true;
       _featureToggles['multi_currency'] = prefs.getBool('feature_multi_currency') ?? false;
-      final themeStr = prefs.getString('app_theme_mode') ?? 'dark';
+      final themeStr = prefs.getString('app_theme_mode') ?? 'light';
       _themeMode = themeStr == 'light' ? ThemeMode.light : ThemeMode.dark;
     } catch (_) {}
 
@@ -788,46 +788,88 @@ class SupabaseService extends ChangeNotifier {
   Future<void> refreshDatabaseData() async {
     if (_isDemoMode) return;
     try {
-      final customersRes = await Supabase.instance.client.from('customers').select();
-      _customers.clear();
-      _customers.addAll(_safeCastList(customersRes));
+      final client = Supabase.instance.client;
 
-      final loansRes = await Supabase.instance.client.from('loans').select();
-      _loans.clear();
-      _loans.addAll(_safeCastList(loansRes));
+      try {
+        final customersRes = await client.from('customers').select();
+        _customers.clear();
+        _customers.addAll(_safeCastList(customersRes));
+      } catch (e) {
+        debugPrint("Error fetching customers table: $e");
+      }
 
-      final collectionsRes = await Supabase.instance.client.from('collections').select().order('collection_date', ascending: false);
-      _collections.clear();
-      _collections.addAll(_safeCastList(collectionsRes));
+      try {
+        final loansRes = await client.from('loans').select();
+        _loans.clear();
+        _loans.addAll(_safeCastList(loansRes));
+      } catch (e) {
+        debugPrint("Error fetching loans table: $e");
+      }
 
-      final remindersRes = await Supabase.instance.client.from('reminders').select();
-      _reminders.clear();
-      _reminders.addAll(_safeCastList(remindersRes));
+      try {
+        final collectionsRes = await client.from('collections').select().order('collection_date', ascending: false);
+        _collections.clear();
+        _collections.addAll(_safeCastList(collectionsRes));
+      } catch (e) {
+        debugPrint("Error fetching collections table: $e");
+      }
 
-      final leadsRes = await Supabase.instance.client.from('crm_leads').select();
-      _leads.clear();
-      _leads.addAll(_safeCastList(leadsRes));
+      try {
+        final remindersRes = await client.from('reminders').select();
+        _reminders.clear();
+        _reminders.addAll(_safeCastList(remindersRes));
+      } catch (e) {
+        debugPrint("Error fetching reminders table: $e");
+      }
 
-      final chitFundsRes = await Supabase.instance.client.from('chit_funds').select();
-      _chitFunds.clear();
-      _chitFunds.addAll(_safeCastList(chitFundsRes));
+      try {
+        final leadsRes = await client.from('crm_leads').select();
+        _leads.clear();
+        _leads.addAll(_safeCastList(leadsRes));
+      } catch (e) {
+        debugPrint("Error fetching crm_leads table: $e");
+      }
 
-      final goldLoansRes = await Supabase.instance.client.from('gold_loans').select();
-      _goldLoans.clear();
-      _goldLoans.addAll(_safeCastList(goldLoansRes));
+      try {
+        final chitFundsRes = await client.from('chit_groups').select();
+        _chitFunds.clear();
+        _chitFunds.addAll(_safeCastList(chitFundsRes));
+      } catch (e) {
+        debugPrint("Error fetching chit_groups table: $e");
+      }
 
-      final alertsRes = await Supabase.instance.client.from('emergency_alerts').select();
-      _alerts.clear();
-      _alerts.addAll(_safeCastList(alertsRes));
+      try {
+        final goldLoansRes = await client.from('gold_loans').select();
+        _goldLoans.clear();
+        _goldLoans.addAll(_safeCastList(goldLoansRes));
+      } catch (e) {
+        debugPrint("Error fetching gold_loans table: $e");
+      }
+
+      try {
+        final alertsRes = await client.from('emergency_alerts').select();
+        _alerts.clear();
+        _alerts.addAll(_safeCastList(alertsRes));
+      } catch (e) {
+        debugPrint("Error fetching emergency_alerts table: $e");
+      }
 
       if (_currentRole == AppUserRole.superAdmin) {
-        final companiesRes = await Supabase.instance.client.from('companies').select();
-        _companies.clear();
-        _companies.addAll(_safeCastList(companiesRes));
+        try {
+          final companiesRes = await client.from('companies').select();
+          _companies.clear();
+          _companies.addAll(_safeCastList(companiesRes));
+        } catch (e) {
+          debugPrint("Error fetching companies table: $e");
+        }
 
-        final usersRes = await Supabase.instance.client.from('users').select();
-        _allUsers.clear();
-        _allUsers.addAll(_safeCastList(usersRes));
+        try {
+          final usersRes = await client.from('users').select();
+          _allUsers.clear();
+          _allUsers.addAll(_safeCastList(usersRes));
+        } catch (e) {
+          debugPrint("Error fetching users table: $e");
+        }
       }
 
       _updateControllers();

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/providers.dart';
+import '../../../core/widgets/kpi_card.dart';
+import '../../../core/widgets/dashboard_section.dart';
 
 class AccountantDashboard extends ConsumerWidget {
   const AccountantDashboard({super.key});
@@ -41,6 +43,7 @@ class AccountantDashboard extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -48,12 +51,14 @@ class AccountantDashboard extends ConsumerWidget {
           'Financial Ledger',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.w900,
-            color: Colors.white,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
         Text(
           'Verify transaction entries, audit cash receipts, and download ledgers.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: isDark ? Colors.grey : const Color(0xFF64748B),
+          ),
         ),
       ],
     );
@@ -68,21 +73,21 @@ class AccountantDashboard extends ConsumerWidget {
       mainAxisSpacing: 12,
       childAspectRatio: MediaQuery.of(context).size.width > 600 ? 1.6 : 3.2,
       children: [
-        _buildKPICard(
+        KpiCard(
           title: 'Total Revenue',
           value: fmt.format(totalRev),
           subtitle: 'Accrued payments',
           icon: Icons.account_balance_wallet,
           color: AppTheme.neonGreen,
         ),
-        _buildKPICard(
+        KpiCard(
           title: 'Total Transactions',
           value: '$transactionCount',
           subtitle: 'Payments processed',
           icon: Icons.analytics,
           color: AppTheme.primaryCyan,
         ),
-        _buildKPICard(
+        KpiCard(
           title: 'Pending Ledger Audit',
           value: '0',
           subtitle: 'All items reconciled',
@@ -93,73 +98,19 @@ class AccountantDashboard extends ConsumerWidget {
     );
   }
 
-  Widget _buildKPICard({
-    required String title,
-    required String value,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(value, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 10)),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 20),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildRecentPayments(BuildContext context, List<Map<String, dynamic>> collections, NumberFormat fmt) {
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return DashboardSectionCard(
+      title: 'Recent Collections Feed',
+      action: const Icon(Icons.receipt_long, color: AppTheme.primaryCyan, size: 16),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Recent Collections Feed', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-              const Icon(Icons.receipt_long, color: AppTheme.primaryCyan, size: 16),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (collections.isEmpty)
-            const Text('No recent collections registered.', style: TextStyle(color: Colors.grey, fontSize: 12))
-          else
-            ListView.separated(
+      child: collections.isEmpty
+          ? Text('No recent collections registered.', style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 12))
+          : ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: collections.length.clamp(0, 2),
-              separatorBuilder: (context, index) => const Divider(color: Colors.white12),
+              separatorBuilder: (context, index) => Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
               itemBuilder: (context, idx) {
                 final c = collections[idx];
                 return ListTile(
@@ -168,8 +119,21 @@ class AccountantDashboard extends ConsumerWidget {
                     backgroundColor: Colors.white10,
                     child: Icon(Icons.payment, color: AppTheme.neonGreen, size: 16),
                   ),
-                  title: Text('Payment Received: ${fmt.format(c['amount'])}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                  subtitle: Text('Method: ${c['payment_method'].toString().toUpperCase()} | Status: ${c['status']}', style: const TextStyle(color: Colors.grey, fontSize: 10)),
+                  title: Text(
+                    'Payment Received: ${fmt.format(c['amount'])}',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Method: ${c['payment_method'].toString().toUpperCase()} | Status: ${c['status']}',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey : const Color(0xFF64748B),
+                      fontSize: 10,
+                    ),
+                  ),
                   trailing: TextButton(
                     onPressed: () {},
                     child: const Text('Export PDF', style: TextStyle(fontSize: 11)),
@@ -177,39 +141,30 @@ class AccountantDashboard extends ConsumerWidget {
                 );
               },
             ),
-        ],
-      ),
     );
   }
 
   Widget _buildPendingVerifications(BuildContext context) {
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return DashboardSectionCard(
+      title: 'Reconcile Suspense Transactions',
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          const Text('Reconcile Suspense Transactions', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'All cash & digital collections are matched and fully verified with ledger entries.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
+          Expanded(
+            child: Text(
+              'All cash & digital collections are matched and fully verified with ledger entries.',
+              style: TextStyle(
+                color: isDark ? Colors.grey : const Color(0xFF64748B),
+                fontSize: 12,
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: AppTheme.neonGreen.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                child: const Text('100% RECONCILED', style: TextStyle(color: AppTheme.neonGreen, fontSize: 8, fontWeight: FontWeight.bold)),
-              ),
-            ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: AppTheme.neonGreen.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+            child: const Text('100% RECONCILED', style: TextStyle(color: AppTheme.neonGreen, fontSize: 8, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -217,36 +172,29 @@ class AccountantDashboard extends ConsumerWidget {
   }
 
   Widget _buildFinancialReports(BuildContext context) {
-    return Container(
+    return DashboardSectionCard(
+      title: 'Export Financial Records',
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text('Export Financial Records', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildExportButton(Icons.text_snippet_outlined, 'P&L Statement'),
-              _buildExportButton(Icons.account_balance, 'Bank Ledger'),
-              _buildExportButton(Icons.document_scanner, 'Tax Reports'),
-            ],
-          ),
+          _buildExportButton(context, Icons.text_snippet_outlined, 'P&L Statement'),
+          _buildExportButton(context, Icons.account_balance, 'Bank Ledger'),
+          _buildExportButton(context, Icons.document_scanner, 'Tax Reports'),
         ],
       ),
     );
   }
 
-  Widget _buildExportButton(IconData icon, String label) {
+  Widget _buildExportButton(BuildContext context, IconData icon, String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Expanded(
       child: Card(
-        color: Colors.white.withValues(alpha: 0.02),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: isDark ? Colors.white.withValues(alpha: 0.02) : const Color(0xFFF8FAFC),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFE2E8F0)),
+        ),
         child: InkWell(
           onTap: () {},
           borderRadius: BorderRadius.circular(8),
@@ -256,7 +204,17 @@ class AccountantDashboard extends ConsumerWidget {
               children: [
                 Icon(icon, color: AppTheme.primaryCyan, size: 20),
                 const SizedBox(height: 4),
-                FittedBox(fit: BoxFit.scaleDown, child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10))),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

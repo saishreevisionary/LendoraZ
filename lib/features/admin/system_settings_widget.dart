@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/providers.dart';
+import '../../core/widgets/dashboard_section.dart';
 
 class SystemSettingsWidget extends ConsumerStatefulWidget {
   const SystemSettingsWidget({super.key});
@@ -95,6 +96,7 @@ class _SystemSettingsWidgetState extends ConsumerState<SystemSettingsWidget> {
   @override
   Widget build(BuildContext context) {
     final service = ref.watch(supabaseServiceProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -111,12 +113,15 @@ class _SystemSettingsWidgetState extends ConsumerState<SystemSettingsWidget> {
                       'Global Settings',
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
                           ),
                     ),
-                    const Text(
+                    Text(
                       'Configure platform parameters and system rules.',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                      style: TextStyle(
+                        color: isDark ? Colors.grey : const Color(0xFF64748B),
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     
@@ -125,86 +130,66 @@ class _SystemSettingsWidgetState extends ConsumerState<SystemSettingsWidget> {
                       final key = setting['key'] as String;
                       final desc = setting['description'] as String? ?? 'System configuration parameter';
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(16),
-                        decoration: AppTheme.glassDecoration(context: context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              key.toUpperCase().replaceAll('_', ' '),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: AppTheme.primaryBlue,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              desc,
-                              style: const TextStyle(fontSize: 11, color: Colors.grey),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: _settingsControllers[key],
-                                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                                    decoration: InputDecoration(
-                                      isDense: true,
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: const BorderSide(color: AppTheme.darkBorder),
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: DashboardSectionCard(
+                          title: key.toUpperCase().replaceAll('_', ' '),
+                          subtitle: desc,
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _settingsControllers[key],
+                                  style: TextStyle(
+                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                    fontSize: 14,
+                                  ),
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(
+                                        color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: const BorderSide(color: AppTheme.primaryBlue),
-                                      ),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                     ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(color: AppTheme.primaryBlue),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                ElevatedButton(
-                                  onPressed: () => _saveSetting(key),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryBlue,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    padding: const EdgeInsets.all(12),
-                                    minimumSize: const Size(44, 44),
-                                  ),
-                                  child: const Icon(Icons.save_outlined, color: Colors.white, size: 18),
-                                )
-                              ],
-                            ),
-                          ],
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton(
+                                onPressed: () => _saveSetting(key),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryBlue,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  padding: const EdgeInsets.all(12),
+                                  minimumSize: const Size(44, 44),
+                                ),
+                                child: const Icon(Icons.save_outlined, color: Colors.white, size: 18),
+                              )
+                            ],
+                          ),
                         ),
                       );
                     }),
                     
                     const SizedBox(height: 12),
-                    Text(
-                      'Account Details',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
+                    DashboardSectionCard(
+                      title: 'Account Details',
                       padding: const EdgeInsets.all(16),
-                      decoration: AppTheme.glassDecoration(context: context),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildAccountRow('Full Name', service.currentUserName),
-                          const Divider(color: Colors.white10),
-                          _buildAccountRow('Email Address', service.currentUserEmail),
-                          const Divider(color: Colors.white10),
-                          _buildAccountRow('Status', 'Active Profile'),
+                          _buildAccountRow(context, 'Full Name', service.currentUserName),
+                          Divider(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
+                          _buildAccountRow(context, 'Email Address', service.currentUserEmail),
+                          Divider(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
+                          _buildAccountRow(context, 'Status', 'Active Profile'),
                         ],
                       ),
                     ),
@@ -216,14 +201,28 @@ class _SystemSettingsWidgetState extends ConsumerState<SystemSettingsWidget> {
     );
   }
 
-  Widget _buildAccountRow(String label, String value) {
+  Widget _buildAccountRow(BuildContext context, String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(
+            label,
+            style: TextStyle(
+              color: isDark ? Colors.grey : const Color(0xFF64748B),
+              fontSize: 13,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
         ],
       ),
     );

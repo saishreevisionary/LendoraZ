@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/network/supabase_service.dart';
 import '../../../core/network/providers.dart';
+import '../../../core/widgets/kpi_card.dart';
+import '../../../core/widgets/dashboard_section.dart';
 
 class CompanyOwnerDashboard extends ConsumerWidget {
   const CompanyOwnerDashboard({super.key});
@@ -44,6 +46,7 @@ class CompanyOwnerDashboard extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context, SupabaseService service) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -51,12 +54,14 @@ class CompanyOwnerDashboard extends ConsumerWidget {
           'Executive Workspace',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.w900,
-            color: Colors.white,
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
         Text(
           'Strategic growth, AI risk profiling, and team analytics.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: isDark ? Colors.grey : const Color(0xFF64748B),
+          ),
         ),
       ],
     );
@@ -69,30 +74,30 @@ class CompanyOwnerDashboard extends ConsumerWidget {
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 12,
       mainAxisSpacing: 12,
-      childAspectRatio: 1.4,
+      childAspectRatio: MediaQuery.of(context).size.width > 600 ? 1.4 : 1.15,
       children: [
-        _buildSAKPICard(
+        KpiCard(
           title: 'Total Customers',
           value: '$customerCount',
           subtitle: 'Active accounts',
           icon: Icons.people_alt,
           color: AppTheme.primaryBlue,
         ),
-        _buildSAKPICard(
+        KpiCard(
           title: 'Active Loans',
           value: '$loanCount',
           subtitle: 'In collection',
           icon: Icons.account_balance,
           color: AppTheme.primaryCyan,
         ),
-        _buildSAKPICard(
+        KpiCard(
           title: 'Lending Portfolio',
           value: fmt.format(portfolio),
           subtitle: 'Capital deployed',
           icon: Icons.monetization_on,
           color: AppTheme.neonGreen,
         ),
-        _buildSAKPICard(
+        KpiCard(
           title: 'Net Profit Margin',
           value: '18.4%',
           subtitle: 'Industry Avg: 12%',
@@ -103,63 +108,14 @@ class CompanyOwnerDashboard extends ConsumerWidget {
     );
   }
 
-  Widget _buildSAKPICard({
-    required String title,
-    required String value,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
-              Icon(icon, color: color, size: 18),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(value, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 2),
-              Text(subtitle, style: TextStyle(color: color.withValues(alpha: 0.8), fontSize: 9)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPredictiveCashflow(BuildContext context, Map<String, double> forecast, NumberFormat fmt) {
-    return Container(
+    return DashboardSectionCard(
+      title: 'Predictive Cashflow Forecast',
+      action: const Icon(Icons.auto_awesome, color: AppTheme.primaryCyan, size: 18),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Predictive Cashflow Forecast', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              const Icon(Icons.auto_awesome, color: AppTheme.primaryCyan, size: 18),
-            ],
-          ),
-          const SizedBox(height: 16),
           SizedBox(
             height: 150,
             child: LineChart(
@@ -225,117 +181,111 @@ class CompanyOwnerDashboard extends ConsumerWidget {
   }
 
   Widget _buildAgentPerformance(BuildContext context, SupabaseService service) {
-    return Container(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return DashboardSectionCard(
+      title: 'Collection Agent Performance',
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Collection Agent Performance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 16),
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: service.getAgentsWithStats(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: CircularProgressIndicator(color: AppTheme.primaryBlue),
-                  ),
-                );
-              }
-              if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: Text('No agents registered.', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                  ),
-                );
-              }
-              final agents = snapshot.data!;
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: agents.length,
-                separatorBuilder: (context, index) => const Divider(color: Colors.white12),
-                itemBuilder: (context, idx) {
-                  final agent = agents[idx];
-                  final name = agent['full_name'] ?? 'Agent';
-                  final status = agent['status'] ?? 'Offline';
-                  final target = agent['target_amount'] as double? ?? 50000.0;
-                  final collected = agent['collected_amount'] as double? ?? 0.0;
-                  final double percent = target > 0 ? (collected / target) * 100 : 0.0;
-                  
-                  final badgeColor = percent >= 90 ? AppTheme.neonGreen : (percent >= 50 ? AppTheme.warningOrange : AppTheme.dangerRed);
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: service.getAgentsWithStats(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: CircularProgressIndicator(color: AppTheme.primaryBlue),
+              ),
+            );
+          }
+          if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('No agents registered.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ),
+            );
+          }
+          final agents = snapshot.data!;
+          return ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: agents.length,
+            separatorBuilder: (context, index) => Divider(
+              color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+            ),
+            itemBuilder: (context, idx) {
+              final agent = agents[idx];
+              final name = agent['full_name'] ?? 'Agent';
+              final status = agent['status'] ?? 'Offline';
+              final target = agent['target_amount'] as double? ?? 50000.0;
+              final collected = agent['collected_amount'] as double? ?? 0.0;
+              final double percent = target > 0 ? (collected / target) * 100 : 0.0;
+              
+              final badgeColor = percent >= 90 ? AppTheme.neonGreen : (percent >= 50 ? AppTheme.warningOrange : AppTheme.dangerRed);
 
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.15),
-                      child: Text(
-                        name.isNotEmpty ? name.substring(0, 2).toUpperCase() : 'AG',
-                        style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: Text('Status: $status', style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                    trailing: Text('${percent.toStringAsFixed(1)}% Target', style: TextStyle(color: badgeColor, fontSize: 13, fontWeight: FontWeight.bold)),
-                  );
-                },
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.15),
+                  child: Text(
+                    name.isNotEmpty ? name.substring(0, 2).toUpperCase() : 'AG',
+                    style: const TextStyle(color: AppTheme.primaryBlue, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                title: Text(
+                  name,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                subtitle: Text(
+                  'Status: $status',
+                  style: TextStyle(
+                    color: isDark ? Colors.grey : const Color(0xFF64748B),
+                    fontSize: 11,
+                  ),
+                ),
+                trailing: Text('${percent.toStringAsFixed(1)}% Target', style: TextStyle(color: badgeColor, fontSize: 13, fontWeight: FontWeight.bold)),
               );
             },
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildLendingControls(BuildContext context, SupabaseService service) {
-    return Container(
+    return DashboardSectionCard(
+      title: 'Company Configurations',
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.darkBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
         children: [
-          const Text('Company Configurations', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildConfigChip(
-                context, 
-                Icons.percent, 
-                'Interest Rules', 
-                () => _showConfigDialog(context, service, 'interest_rate_default', 'Company Interest Rules', 'Default Annual Interest Rate (%)'),
-              ),
-              _buildConfigChip(
-                context, 
-                Icons.gavel, 
-                'Penalty Setup', 
-                () => _showConfigDialog(context, service, 'penalty_rate_monthly', 'Late Payment Penalty Setup', 'Default Monthly Penalty Rate (%)'),
-              ),
-              _buildConfigChip(
-                context, 
-                Icons.settings_suggest, 
-                'Auto Collection', 
-                () => _showConfigDialog(context, service, 'sync_interval_seconds', 'Automated Collections Setup', 'Auto-sync Cache Polling Interval (seconds)'),
-              ),
-              _buildConfigChip(
-                context, 
-                Icons.security, 
-                'RLS Status: ACTIVE', 
-                () => _showRLSInfoDialog(context),
-              ),
-            ],
+          _buildConfigChip(
+            context, 
+            Icons.percent, 
+            'Interest Rules', 
+            () => _showConfigDialog(context, service, 'interest_rate_default', 'Company Interest Rules', 'Default Annual Interest Rate (%)'),
+          ),
+          _buildConfigChip(
+            context, 
+            Icons.gavel, 
+            'Penalty Setup', 
+            () => _showConfigDialog(context, service, 'penalty_rate_monthly', 'Late Payment Penalty Setup', 'Default Monthly Penalty Rate (%)'),
+          ),
+          _buildConfigChip(
+            context, 
+            Icons.settings_suggest, 
+            'Auto Collection', 
+            () => _showConfigDialog(context, service, 'sync_interval_seconds', 'Automated Collections Setup', 'Auto-sync Cache Polling Interval (seconds)'),
+          ),
+          _buildConfigChip(
+            context, 
+            Icons.security, 
+            'RLS Status: ACTIVE', 
+            () => _showRLSInfoDialog(context),
           ),
         ],
       ),
@@ -343,11 +293,22 @@ class CompanyOwnerDashboard extends ConsumerWidget {
   }
 
   Widget _buildConfigChip(BuildContext context, IconData icon, String label, VoidCallback onPressed) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ActionChip(
       avatar: Icon(icon, size: 16, color: AppTheme.primaryCyan),
-      label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
-      backgroundColor: Colors.white.withValues(alpha: 0.05),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isDark ? Colors.white : const Color(0xFF0F172A),
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      backgroundColor: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF1F5F9),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0)),
+      ),
       onPressed: onPressed,
     );
   }
@@ -369,16 +330,24 @@ class CompanyOwnerDashboard extends ConsumerWidget {
 
       if (!context.mounted) return;
 
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+
       showDialog(
         context: context,
         builder: (context) {
           return AlertDialog(
-            backgroundColor: AppTheme.darkCard,
+            backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: AppTheme.darkBorder),
+              side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
             ),
-            title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            title: Text(
+              title,
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,13 +360,13 @@ class CompanyOwnerDashboard extends ConsumerWidget {
                 TextField(
                   controller: controller,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A)),
                   decoration: InputDecoration(
                     labelText: label,
                     labelStyle: const TextStyle(color: Colors.grey),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppTheme.darkBorder),
+                      borderSide: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -460,25 +429,26 @@ class CompanyOwnerDashboard extends ConsumerWidget {
   }
 
   void _showRLSInfoDialog(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: AppTheme.darkCard,
+          backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: AppTheme.darkBorder),
+            side: BorderSide(color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder),
           ),
           title: const Row(
             children: [
               Icon(Icons.security, color: AppTheme.neonGreen),
               SizedBox(width: 8),
-              Text('Security Enforced', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              Text('Security Enforced', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
-          content: const Text(
+          content: Text(
             'Row Level Security (RLS) is ACTIVE. \n\nEvery database transaction is guarded by Postgres tenant isolation policies. It is mathematically impossible for agents, accountants, or managers from other companies to access your files or customer sheets.',
-            style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.4),
+            style: TextStyle(color: isDark ? Colors.grey : const Color(0xFF64748B), fontSize: 13, height: 1.4),
           ),
           actions: [
             TextButton(
