@@ -282,6 +282,19 @@ class SupabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleDemoMode() {
+    _isDemoMode = !_isDemoMode;
+    if (_isDemoMode) {
+      _loadMockData();
+    } else {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser != null) {
+        refreshDatabaseData();
+      }
+    }
+    notifyListeners();
+  }
+
   Future<void> signOut() async {
     if (!_isDemoMode) {
       await Supabase.instance.client.auth.signOut();

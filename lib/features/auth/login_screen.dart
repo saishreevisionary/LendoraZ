@@ -160,6 +160,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
     }
   }
 
+  IconData _getRoleIcon(AppUserRole role) {
+    switch (role) {
+      case AppUserRole.superAdmin: return Icons.admin_panel_settings_rounded;
+      case AppUserRole.companyOwner: return Icons.business_center_rounded;
+      case AppUserRole.manager: return Icons.supervisor_account_rounded;
+      case AppUserRole.collectionAgent: return Icons.directions_run_rounded;
+      case AppUserRole.accountant: return Icons.account_balance_wallet_rounded;
+      case AppUserRole.customer: return Icons.person_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = ref.watch(supabaseServiceProvider);
@@ -332,7 +343,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
                           const SizedBox(height: 24),
 
                           // Supabase Connection Status Card
-                          _StatusBanner(isDemo: service.isDemoMode),
+                          _StatusBanner(
+                            isDemo: service.isDemoMode,
+                            onTap: () => service.toggleDemoMode(),
+                          ),
                           const SizedBox(height: 20),
 
                           // Glassmorphic Login Card
@@ -395,6 +409,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
                                         controller: _nameController,
                                         labelText: 'Full Name',
                                         prefixIcon: Icons.person_outline_rounded,
+                                        enabled: !_isLoading,
                                       ),
                                       const SizedBox(height: 16),
                                     ],
@@ -405,6 +420,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
                                       labelText: 'Email Address',
                                       prefixIcon: Icons.email_outlined,
                                       keyboardType: TextInputType.emailAddress,
+                                      enabled: !_isLoading,
                                     ),
                                     const SizedBox(height: 16),
                                     
@@ -414,39 +430,77 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
                                       labelText: 'Password',
                                       prefixIcon: Icons.lock_outline_rounded,
                                       obscureText: true,
+                                      enabled: !_isLoading,
                                     ),
-                                    const SizedBox(height: 24),
+                                    const SizedBox(height: 20),
         
-                                    // Role Selection Area
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.shield_outlined, size: 16, color: AppTheme.primaryBlue),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          _isSignUp ? 'Select Account Role' : 'Select Inspection Role',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            color: const Color(0xFF1E293B),
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 13,
+                                    // Role Selection Dropdown
+                                    DropdownButtonFormField<AppUserRole>(
+                                      value: service.currentRole,
+                                      onChanged: _isLoading ? null : (role) {
+                                        if (role != null) service.switchRole(role);
+                                      },
+                                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B)),
+                                      dropdownColor: Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                      style: GoogleFonts.inter(
+                                        color: const Color(0xFF0F172A),
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: _isSignUp ? 'Select Account Role' : 'Select Inspection Role',
+                                        labelStyle: GoogleFonts.inter(
+                                          color: const Color(0xFF64748B),
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                        prefixIcon: const Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 14),
+                                          child: Icon(
+                                            Icons.shield_outlined,
+                                            color: Color(0xFF64748B),
+                                            size: 18,
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-        
-                                    // 2-Column Responsive / Premium Role Grid
-                                    GridView.count(
-                                      shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
-                                      crossAxisCount: 2,
-                                      mainAxisSpacing: 10,
-                                      crossAxisSpacing: 10,
-                                      childAspectRatio: 2.4,
-                                      children: AppUserRole.values.map((role) {
-                                        return _RoleCard(
-                                          role: role,
-                                          isSelected: service.currentRole == role,
-                                          onTap: () => service.switchRole(role),
+                                        prefixIconConstraints: const BoxConstraints(minWidth: 40),
+                                        filled: true,
+                                        fillColor: const Color(0xFFF8FAFC),
+                                        contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(20),
+                                          borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(20),
+                                          borderSide: const BorderSide(color: AppTheme.primaryBlue, width: 2),
+                                        ),
+                                        disabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(20),
+                                          borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+                                        ),
+                                      ),
+                                      items: AppUserRole.values.map((role) {
+                                        return DropdownMenuItem<AppUserRole>(
+                                          value: role,
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                _getRoleIcon(role),
+                                                size: 18,
+                                                color: AppTheme.primaryBlue,
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Text(
+                                                role.displayName,
+                                                style: GoogleFonts.inter(
+                                                  color: const Color(0xFF0F172A),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         );
                                       }).toList(),
                                     ),
@@ -555,7 +609,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> with TickerProviderSt
 
 class _StatusBanner extends StatelessWidget {
   final bool isDemo;
-  const _StatusBanner({required this.isDemo});
+  final VoidCallback onTap;
+  const _StatusBanner({required this.isDemo, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -564,70 +619,76 @@ class _StatusBanner extends StatelessWidget {
     final iconColor = isDemo ? const Color(0xFFD97706) : const Color(0xFF10B981);
     final textColor = isDemo ? const Color(0xFFB45309) : const Color(0xFF047857);
     final titleText = isDemo ? 'Sandbox Demo Mode Active' : 'Connected to Supabase Live';
-    final descText = isDemo ? 'Running locally on secure simulated database' : 'Enterprise connection secured and online';
+    final descText = isDemo ? 'Running locally on simulated database (Tap to go Live)' : 'Enterprise connection secured and online (Tap for Sandbox)';
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: iconColor.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: borderColor, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: iconColor.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: iconColor.withValues(alpha: 0.12),
-                  blurRadius: 6,
-                  spreadRadius: 1,
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: iconColor.withValues(alpha: 0.12),
+                      blurRadius: 6,
+                      spreadRadius: 1,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Icon(
-              isDemo ? Icons.science_rounded : Icons.verified_user_rounded,
-              color: iconColor,
-              size: 18,
-            ),
+                child: Icon(
+                  isDemo ? Icons.science_rounded : Icons.verified_user_rounded,
+                  color: iconColor,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titleText,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        color: textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      descText,
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 10,
+                        color: textColor.withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _PulseDot(isDemo: isDemo),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  titleText,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12,
-                    color: textColor,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  descText,
-                  style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w500,
-                    fontSize: 10,
-                    color: textColor.withValues(alpha: 0.75),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _PulseDot(isDemo: isDemo),
-        ],
+        ),
       ),
     );
   }
@@ -639,6 +700,7 @@ class _CustomTextField extends StatefulWidget {
   final IconData prefixIcon;
   final bool obscureText;
   final TextInputType keyboardType;
+  final bool enabled;
 
   const _CustomTextField({
     required this.controller,
@@ -646,6 +708,7 @@ class _CustomTextField extends StatefulWidget {
     required this.prefixIcon,
     this.obscureText = false,
     this.keyboardType = TextInputType.text,
+    this.enabled = true,
   });
 
   @override
@@ -678,7 +741,7 @@ class _CustomTextFieldState extends State<_CustomTextField> {
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        boxShadow: _isFocused
+        boxShadow: _isFocused && widget.enabled
             ? [
                 BoxShadow(
                   color: AppTheme.primaryBlue.withValues(alpha: 0.12),
@@ -699,6 +762,7 @@ class _CustomTextFieldState extends State<_CustomTextField> {
         focusNode: _focusNode,
         obscureText: widget.obscureText,
         keyboardType: widget.keyboardType,
+        enabled: widget.enabled,
         style: GoogleFonts.inter(
           color: const Color(0xFF0F172A),
           fontSize: 15,
@@ -707,7 +771,7 @@ class _CustomTextFieldState extends State<_CustomTextField> {
         decoration: InputDecoration(
           labelText: widget.labelText,
           labelStyle: GoogleFonts.inter(
-            color: _isFocused ? AppTheme.primaryBlue : const Color(0xFF64748B),
+            color: _isFocused && widget.enabled ? AppTheme.primaryBlue : const Color(0xFF64748B),
             fontWeight: FontWeight.w600,
             fontSize: 13,
           ),
@@ -715,13 +779,13 @@ class _CustomTextFieldState extends State<_CustomTextField> {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Icon(
               widget.prefixIcon,
-              color: _isFocused ? AppTheme.primaryBlue : const Color(0xFF64748B),
+              color: _isFocused && widget.enabled ? AppTheme.primaryBlue : const Color(0xFF64748B),
               size: 18,
             ),
           ),
           prefixIconConstraints: const BoxConstraints(minWidth: 40),
           filled: true,
-          fillColor: _isFocused ? Colors.white : const Color(0xFFF8FAFC),
+          fillColor: _isFocused && widget.enabled ? Colors.white : const Color(0xFFF8FAFC),
           contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(20),
@@ -731,134 +795,10 @@ class _CustomTextFieldState extends State<_CustomTextField> {
             borderRadius: BorderRadius.circular(20),
             borderSide: const BorderSide(color: AppTheme.primaryBlue, width: 2),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RoleCard extends StatelessWidget {
-  final AppUserRole role;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _RoleCard({
-    required this.role,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  IconData _getRoleIcon(AppUserRole role) {
-    switch (role) {
-      case AppUserRole.superAdmin: return Icons.admin_panel_settings_rounded;
-      case AppUserRole.companyOwner: return Icons.business_center_rounded;
-      case AppUserRole.manager: return Icons.supervisor_account_rounded;
-      case AppUserRole.collectionAgent: return Icons.directions_run_rounded;
-      case AppUserRole.accountant: return Icons.account_balance_wallet_rounded;
-      case AppUserRole.customer: return Icons.person_rounded;
-    }
-  }
-
-  String _getRoleDescription(AppUserRole role) {
-    switch (role) {
-      case AppUserRole.superAdmin: return 'Full Control';
-      case AppUserRole.companyOwner: return 'Organization';
-      case AppUserRole.manager: return 'Team Analytics';
-      case AppUserRole.collectionAgent: return 'Collections';
-      case AppUserRole.accountant: return 'Financials';
-      case AppUserRole.customer: return 'Client Portal';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected 
-              ? AppTheme.primaryBlue.withValues(alpha: 0.05) 
-              : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryBlue : const Color(0xFFE2E8F0),
-            width: isSelected ? 2.0 : 1.2,
+          disabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  )
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.005),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  )
-                ],
-        ),
-        child: Row(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: isSelected 
-                    ? AppTheme.primaryBlue.withValues(alpha: 0.1) 
-                    : const Color(0xFFF1F5F9),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                _getRoleIcon(role),
-                size: 16,
-                color: isSelected ? AppTheme.primaryBlue : const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    role.displayName,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 11,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
-                      color: isSelected ? AppTheme.primaryBlue : const Color(0xFF1E293B),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    _getRoleDescription(role),
-                    style: GoogleFonts.inter(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected 
-                          ? AppTheme.primaryBlue.withValues(alpha: 0.7) 
-                          : const Color(0xFF94A3B8),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            if (isSelected)
-              const Icon(
-                Icons.check_circle_rounded,
-                size: 14,
-                color: AppTheme.primaryBlue,
-              ),
-          ],
         ),
       ),
     );
