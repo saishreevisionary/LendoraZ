@@ -241,7 +241,7 @@ class SuperAdminDashboard extends ConsumerWidget {
       value: val,
       onChanged: onChanged,
       contentPadding: EdgeInsets.zero,
-      activeThumbColor: AppTheme.primaryCyan,
+      activeColor: AppTheme.primaryCyan,
       title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
       subtitle: Text(desc, style: const TextStyle(color: Colors.grey, fontSize: 11)),
     );

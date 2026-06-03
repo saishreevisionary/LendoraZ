@@ -26,7 +26,7 @@ class LendoraZApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Listen to changes in service state (e.g. settings)
-    ref.watch(supabaseServiceProvider);
+    final service = ref.watch(supabaseServiceProvider);
 
     return MaterialApp(
       title: 'LendoraZ Premium Fintech',

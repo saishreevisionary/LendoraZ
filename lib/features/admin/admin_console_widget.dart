@@ -240,7 +240,7 @@ class _AdminConsoleWidgetState extends ConsumerState<AdminConsoleWidget> with Si
                     ),
                     Switch(
                       value: status == 'active',
-                      activeThumbColor: AppTheme.neonGreen,
+                      activeColor: AppTheme.neonGreen,
                       inactiveThumbColor: AppTheme.dangerRed,
                       inactiveTrackColor: AppTheme.dangerRed.withValues(alpha: 0.2),
                       onChanged: (active) {

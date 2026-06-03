@@ -120,7 +120,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 Switch(
                   value: !service.isOffline,
                   onChanged: (_) => service.toggleNetworkMode(),
-                  activeThumbColor: AppTheme.neonGreen,
+                  activeColor: AppTheme.neonGreen,
                   inactiveThumbColor: AppTheme.warningOrange,
                   inactiveTrackColor: AppTheme.warningOrange.withValues(alpha: 0.2),
                 ),

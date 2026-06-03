@@ -27,7 +27,7 @@ void main() {
     test('Should change role profile data on switchRole', () {
       service.switchRole(AppUserRole.collectionAgent);
       expect(service.currentRole, AppUserRole.collectionAgent);
-      expect(service.currentUserEmail, 'rohan@lendoraz.com');
+      expect(service.currentUserEmail, 'agent@lendoraz.com');
     });
 
     test('Should queue collection offline and transition state when toggleNetworkMode is triggered', () async {
